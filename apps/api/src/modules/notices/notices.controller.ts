@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { NoticesService } from "./notices.service.js";
+import { StaffGuard } from "../admin/staff.guard.js";
 import { CurrentUser, type RequestUser } from "../../common/auth/current-user.decorator.js";
 
 @Controller("notices")
@@ -24,5 +25,22 @@ export class NoticesController {
   @Post(":id/physical-service")
   physical(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.notices.requestPhysicalService(user.sub, id);
+  }
+}
+
+/** Staff surface: notice detail and concierge physical-service requests. */
+@UseGuards(StaffGuard)
+@Controller("internal")
+export class NoticesAdminController {
+  constructor(private readonly notices: NoticesService) {}
+
+  @Get("notices/:id")
+  detail(@Param("id") id: string) {
+    return this.notices.staffDetail(id);
+  }
+
+  @Post("notices/:id/physical-service")
+  physical(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.notices.staffRequestPhysicalService(user.sub, id);
   }
 }

@@ -228,7 +228,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 export function statusTone(status: string): "ok" | "warn" | "muted" | "info" {
   const s = status.toUpperCase();
   if (["COMPLETED", "PAID", "TENANT_CONFIRMED", "CONFIRMED", "DISPATCHED", "RECONCILED", "ACTIVE", "APPROVED", "SENT", "FULFILLED"].includes(s)) return "ok";
-  if (["OVERDUE", "ESCALATED", "TENANT_DISPUTED", "DISPUTED", "URGENT", "REJECTED", "SKIPPED", "REFUSED"].includes(s)) return "warn";
+  if (["OVERDUE", "ESCALATED", "TENANT_DISPUTED", "DISPUTED", "URGENT", "REJECTED", "SKIPPED", "REFUSED", "REFUNDED"].includes(s)) return "warn";
   if (["IN_PROGRESS", "QUOTING", "COMPLETION_SUBMITTED", "INSTRUCTED", "SUBMITTED", "QUEUED", "DEFERRED", "AWAITING_TENANT", "RECEIVED", "PENDING", "APPLIED"].includes(s)) return "info";
   return "muted";
 }

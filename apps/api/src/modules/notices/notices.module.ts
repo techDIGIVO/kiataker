@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { NoticesController } from "./notices.controller.js";
+import { NoticesController, NoticesAdminController } from "./notices.controller.js";
 import { NoticesService } from "./notices.service.js";
 
 @Module({
-  controllers: [NoticesController],
+  controllers: [NoticesController, NoticesAdminController],
   providers: [NoticesService],
   exports: [NoticesService],
 })

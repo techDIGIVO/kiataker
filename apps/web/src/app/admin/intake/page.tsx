@@ -102,6 +102,12 @@ export default function IntakeBoard() {
     }
   }
 
+  async function resend(id: string) {
+    setError(""); setMsg("");
+    try { const r = await apiSend<{ confirmUrl: string }>("POST", `/internal/intake/${id}/send`, {}); setLink(r.confirmUrl); setMsg("Confirmation link re-issued."); load(); }
+    catch (e) { setError((e as Error).message); }
+  }
+
   const committed = batches.reduce((s, b) => s + b.committedCount, 0);
 
   return (
@@ -149,7 +155,7 @@ export default function IntakeBoard() {
             {batches.length === 0 ? (
               <Empty>No intake batches yet.</Empty>
             ) : (
-              <Table head={["Landlord", "Rows", "Status", "Created", "Date"]}>
+              <Table head={["Landlord", "Rows", "Status", "Created", "Date", "Action"]}>
                 {batches.map((b) => (
                   <tr key={b.id}>
                     <Td>{b.landlord ?? "None"}</Td>
@@ -157,6 +163,13 @@ export default function IntakeBoard() {
                     <Td><Tag tone={statusTone(b.status === "COMMITTED" ? "COMPLETED" : b.status === "REJECTED" ? "DISPUTED" : b.status)}>{b.status}</Tag></Td>
                     <Td>{b.committedCount}</Td>
                     <Td>{new Date(b.createdAt).toLocaleDateString()}</Td>
+                    <Td>
+                      {b.status === "DRAFT" || b.status === "AWAITING_LANDLORD" ? (
+                        <button className="btn btn-outline" style={{ height: 30, fontSize: 12, padding: "0 10px" }} onClick={() => resend(b.id)}>Resend link</button>
+                      ) : (
+                        <span style={{ fontSize: 13, color: "var(--k-text-muted)" }}>None</span>
+                      )}
+                    </Td>
                   </tr>
                 ))}
               </Table>

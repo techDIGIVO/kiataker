@@ -320,6 +320,10 @@ async function main() {
 
   const noticesBoard = await call("GET", "/internal/board/notices", undefined, staffToken);
   ok("Notices board lists the dispatched notice", Array.isArray(noticesBoard.json) && noticesBoard.json.some((n) => n.id === instruct.json.notice.id));
+  const admNoticeDetail = await call("GET", `/internal/notices/${instruct.json.notice.id}`, undefined, staffToken);
+  ok("staff can view a notice's detail", admNoticeDetail.json.id === instruct.json.notice.id);
+  const admPhys = await call("POST", `/internal/notices/${instruct.json.notice.id}/physical-service`, {}, staffToken);
+  ok("staff request physical service on a notice", admPhys.json.requested === true);
 
   const boardsNeedStaff = await call("GET", "/internal/board/issues", undefined, token);
   ok("a landlord cannot read the admin boards (403)", boardsNeedStaff.status === 403);
@@ -404,6 +408,12 @@ async function main() {
 
   const payBoard = await call("GET", "/internal/board/payments", undefined, staffToken);
   ok("payments board shows the settled split", Array.isArray(payBoard.json) && payBoard.json.some((p) => p.reference === payRef && p.status === "SUCCESS" && p.netKobo === net.toString()));
+
+  // Staff refund a settled payment (records the reversal; Kiataker holds no money, BP-07). Idempotent.
+  const refund = await call("POST", `/internal/payments/${payRef}/refund`, {}, staffToken);
+  ok("staff refund a settled payment", refund.json.status === "REFUNDED" && refund.json.idempotent === false);
+  const refundAgain = await call("POST", `/internal/payments/${payRef}/refund`, {}, staffToken);
+  ok("refunding again is idempotent", refundAgain.json.idempotent === true);
 
   // The coordination fee is admin-configurable (definition-of-done #4) and drives the split.
   const setFee = await call("PUT", "/internal/integrations/payments-config", { feeBps: 1000 }, staffToken);

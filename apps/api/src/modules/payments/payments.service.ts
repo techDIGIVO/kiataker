@@ -165,6 +165,26 @@ export class PaymentsService {
   }
 
   /** Test-mode convenience so the local /pay button completes a payment without PSP signing. */
+  /**
+   * Refund a successful on-platform payment (P4). Kiataker records the reversal and reopens the
+   * charge; it never holds or moves the money (BP-07), so the actual return is the landlord's /
+   * the PSP's action. Live Paystack refund-API calls are wired with live keys; here it records.
+   * Idempotent.
+   */
+  async refund(staffId: string, reference: string) {
+    const payment = await this.prisma.payment.findFirst({ where: { reference } });
+    if (!payment) throw new NotFound("Payment not found");
+    if (payment.status === "REFUNDED") return { reference, status: "REFUNDED", idempotent: true };
+    if (payment.status !== "SUCCESS") throw new Conflict("Only a successful payment can be refunded");
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
+      if (payment.rentChargeId) await tx.rentCharge.update({ where: { id: payment.rentChargeId }, data: { status: "OVERDUE", paidAt: null } });
+      await this.outbox.emit(tx, "payment.refunded", payment.tenancyId, { paymentId: payment.id, reference });
+      await this.audit.record(tx, { actor: staffId, action: "admin.payment.refund", objectRef: `payment:${payment.id}`, reason: "staff action", before: { status: "SUCCESS" }, after: { status: "REFUNDED" } });
+    });
+    return { reference, status: "REFUNDED", idempotent: false };
+  }
+
   async devComplete(reference: string) {
     if (this.psp.mode() !== "fake") throw new Forbidden("Dev-complete is only available in test mode");
     const payment = await this.prisma.payment.findFirst({ where: { reference } });

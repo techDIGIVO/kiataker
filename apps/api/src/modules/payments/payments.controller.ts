@@ -58,4 +58,14 @@ export class PaymentsAdminController {
   checkout(@CurrentUser() user: RequestUser, @Body() body: { tenancyId: string; chargeId?: string; email?: string }) {
     return this.payments.createCheckoutForStaff(user.sub, body);
   }
+
+  @Post("payments/:reference/refund")
+  refund(@CurrentUser() user: RequestUser, @Param("reference") reference: string) {
+    return this.payments.refund(user.sub, reference);
+  }
+
+  @Post("payments/:reference/dev-complete")
+  devComplete(@Param("reference") reference: string) {
+    return this.payments.devComplete(reference);
+  }
 }

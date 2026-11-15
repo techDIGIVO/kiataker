@@ -38,6 +38,8 @@ export default function PaymentsBoard() {
   const [creating, setCreating] = useState(false);
   const [tenancyId, setTenancyId] = useState("");
   const [link, setLink] = useState<CheckoutResult | null>(null);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState("");
 
   function load() {
     return Promise.all([apiGet<PaymentRow[]>("/internal/board/payments"), apiGet<ArrearRow[]>("/internal/board/arrears")])
@@ -78,6 +80,14 @@ export default function PaymentsBoard() {
     }
   }
 
+  async function act(reference: string, path: string, confirmMsg: string, ok: string) {
+    if (!window.confirm(confirmMsg)) return;
+    setBusy(reference); setError(""); setNotice("");
+    try { await apiSend("POST", `/internal/payments/${reference}/${path}`, {}); setNotice(ok); await load(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(""); }
+  }
+
   const settled = rows.filter((r) => r.status === "SUCCESS");
   const settledTotal = settled.reduce((s, r) => s + BigInt(r.netKobo), 0n);
   const feeTotal = settled.reduce((s, r) => s + BigInt(r.feeKobo), 0n);
@@ -86,6 +96,7 @@ export default function PaymentsBoard() {
   return (
     <AdminShell active="payments" title="Payments" subtitle="On-platform rent through a Paystack split. The net settles directly to the landlord; Kiataker never holds the money (BP-07, GJ-12).">
       {error && <Banner tone="warn">{error}</Banner>}
+      {notice && <Banner>{notice}</Banner>}
       {loading ? (
         <Banner>Loading payments...</Banner>
       ) : (
@@ -131,7 +142,7 @@ export default function PaymentsBoard() {
             {rows.length === 0 ? (
               <Empty>No on-platform payments yet.</Empty>
             ) : (
-              <Table head={["Reference", "Property", "Tenant", "Amount", "Fee", "To landlord", "Status"]}>
+              <Table head={["Reference", "Property", "Tenant", "Amount", "Fee", "To landlord", "Status", "Actions"]}>
                 {rows.map((r) => (
                   <tr key={r.reference}>
                     <Td mono>{r.reference}</Td>
@@ -141,6 +152,17 @@ export default function PaymentsBoard() {
                     <Td>{fmtNaira(r.feeKobo)}</Td>
                     <Td>{fmtNaira(r.netKobo)}</Td>
                     <Td><Tag tone={statusTone(r.status)}>{r.status}</Tag></Td>
+                    <Td>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {r.status === "PENDING" && r.reference && (
+                          <button className="btn btn-outline" style={{ height: 30, fontSize: 12, padding: "0 10px" }} disabled={busy === r.reference} onClick={() => act(r.reference!, "dev-complete", "Mark this test checkout as paid?", "Marked as paid.")}>Mark paid (test)</button>
+                        )}
+                        {r.status === "SUCCESS" && r.reference && (
+                          <button className="btn btn-outline" style={{ height: 30, fontSize: 12, padding: "0 10px" }} disabled={busy === r.reference} onClick={() => act(r.reference!, "refund", "Refund this payment? It records the reversal and reopens the charge; Kiataker holds no money.", "Payment refunded.")}>Refund</button>
+                        )}
+                        {r.status !== "PENDING" && r.status !== "SUCCESS" && <span style={{ fontSize: 13, color: "var(--k-text-muted)" }}>{r.status === "REFUNDED" ? "Refunded" : ""}</span>}
+                      </div>
+                    </Td>
                   </tr>
                 ))}
               </Table>

@@ -161,6 +161,22 @@ export class NoticesService {
     return { requested: true, note: "Our team will price physical service by a litigation clerk and coordinate it from the chat." };
   }
 
+  /** Staff view a notice's full detail (concierge; no ownership gate). */
+  async staffDetail(noticeId: string) {
+    return this.get(noticeId);
+  }
+
+  /** Staff request physical service on the landlord's behalf (concierge, CP-08). */
+  async staffRequestPhysicalService(staffId: string, noticeId: string) {
+    const notice = await this.prisma.notice.findUnique({ where: { id: noticeId } });
+    if (!notice) throw new NotFound("Notice not found");
+    const link = await this.prisma.propertyParticipant.findFirst({ where: { propertyId: notice.propertyId, basis: "PB-01" } });
+    if (!link) throw new NotFound("This notice's property has no landlord on record");
+    const result = await this.requestPhysicalService(link.participantId, noticeId);
+    await this.prisma.$transaction((tx) => this.audit.record(tx, { actor: staffId, action: "admin.notice.request_physical_service", objectRef: `notice:${noticeId}`, reason: "staff action" }));
+    return result;
+  }
+
   private toDto(n: { id: string; status: string; propertyId: string; tenancyId: string | null; effectiveDate: Date | null; createdAt: Date }) {
     return { id: n.id, status: n.status, propertyId: n.propertyId, tenancyId: n.tenancyId, effectiveDate: n.effectiveDate?.toISOString() ?? null, createdAt: n.createdAt.toISOString() };
   }
