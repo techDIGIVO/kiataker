@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiGet, apiSend } from "@/lib/admin-api";
 import { AdminShell, StatCard, Section, Table, Td, Tag, Banner, Empty, fmtNaira, statusTone } from "@/components/admin-ui";
 
@@ -33,6 +33,11 @@ export default function KonnectBoard() {
   const [selected, setSelected] = useState<IssueDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selected) panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selected]);
 
   function loadBoard() {
     return apiGet<IssueRow[]>("/internal/board/issues")
@@ -99,14 +104,16 @@ export default function KonnectBoard() {
           </Section>
 
           {selected && (
-            <IssuePanel
-              detail={selected}
-              onClose={() => setSelected(null)}
-              onChanged={() => {
-                openIssue(selected.id);
-                loadBoard();
-              }}
-            />
+            <div ref={panelRef} style={{ scrollMarginTop: 16 }}>
+              <IssuePanel
+                detail={selected}
+                onClose={() => setSelected(null)}
+                onChanged={() => {
+                  openIssue(selected.id);
+                  loadBoard();
+                }}
+              />
+            </div>
           )}
         </>
       )}

@@ -928,7 +928,10 @@ h2 { letter-spacing: -0.03em; }
 
 /* ---------- Admin responsiveness ---------- */
 .admin-shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
-.admin-main { padding: 28px 32px; }
+/* min-width:0 lets the content column shrink so wide tables scroll inside their own
+   container (overflow-x) instead of pushing the whole layout past the viewport and
+   hiding the right-hand Actions column. */
+.admin-main { padding: 28px 32px; min-width: 0; }
 .bld-shell { flex: 1; display: flex; min-height: 0; }
 .bld-side { width: 380px; flex: none; background: #fff; border-right: 1px solid var(--k-border); overflow-y: auto; }
 @media (max-width: 860px) {
