@@ -40,7 +40,9 @@ export function BlockRenderer({ content }: { content: PageContent }) {
         {rest.map((b) => (
           <div
             key={b.id}
+            id={typeof b.props?.anchor === "string" ? b.props.anchor : undefined}
             className={`stack-item${b.style?.bubble ? ` sec-bubble sec-bubble-${b.style.background ?? "muted"}` : ""}`}
+            style={b.props?.anchor ? { scrollMarginTop: 80 } : undefined}
           >
             <BlockView block={b} />
           </div>

@@ -35,6 +35,7 @@ export const DEFAULT_HOME: PageContent = {
       type: "tabs",
       style: { background: "canvas", paddingTop: 100, paddingBottom: 100 },
       props: {
+        anchor: "handles",
         heading: "One platform, <span class='hl-muted'>built around how you actually manage</span>",
         subhead: "From the record to the rent, Kiataker runs the work and keeps the evidence.",
         tabs: [
@@ -80,6 +81,7 @@ export const DEFAULT_HOME: PageContent = {
       type: "steps",
       style: { background: "ivory", bubble: true },
       props: {
+        anchor: "how",
         heading: "Managed in three steps",
         subhead: "Start on WhatsApp. Kiataker does the rest.",
         image: img("1600607687920-4e2a09cf159d"),
