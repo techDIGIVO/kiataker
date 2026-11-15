@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
-import { ActionController } from "./action.controller.js";
+import { ActionController, ActionAdminController } from "./action.controller.js";
 import { ActionService } from "./action.service.js";
 import { ActionProjector } from "./action-projector.service.js";
 
 @Module({
-  controllers: [ActionController],
+  controllers: [ActionController, ActionAdminController],
   providers: [ActionService, ActionProjector],
   exports: [ActionService],
 })

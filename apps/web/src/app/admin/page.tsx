@@ -19,6 +19,7 @@ interface QueueRow {
   priority: string;
   status: string;
   property: string | null;
+  link: string;
 }
 interface Landlord {
   id: string;
@@ -67,6 +68,13 @@ export default function AdminDashboard() {
     } finally {
       setBusyKey("");
     }
+  }
+
+  async function acknowledge(id: string) {
+    setBusyKey(id); setError(""); setNotice("");
+    try { await apiSend("POST", `/internal/actions/${id}/acknowledge`, {}); setQueue(await apiGet<QueueRow[]>("/internal/centres/operations/queue")); setNotice("Item acknowledged."); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusyKey(""); }
   }
 
   useEffect(() => {
@@ -124,18 +132,26 @@ export default function AdminDashboard() {
             <StatCard label="Controls on" value={overview?.controlsEnabled ?? 0} />
           </div>
 
-          <Section title="Operations queue" subtitle="Open actions across every landlord, highest priority first.">
+          <Section title="Operations queue" subtitle="Open actions across every landlord, highest priority first. Acknowledge an item, then go to the record to resolve it (an action closes from the resolving event, never a click, ACT-04).">
             {queue.length === 0 ? (
               <Empty>All clear. No open actions.</Empty>
             ) : (
-              <Table head={["Item", "Call to action", "Priority", "Status", "Property"]}>
+              <Table head={["Item", "Call to action", "Priority", "Status", "Property", "Actions"]}>
                 {queue.map((r) => (
                   <tr key={r.id}>
                     <Td>{r.title}</Td>
                     <Td>{r.callToAction}</Td>
                     <Td><Tag tone={r.priority === "OVERDUE" || r.priority === "URGENT" ? "warn" : "muted"}>{r.priority}</Tag></Td>
-                    <Td>{r.status}</Td>
+                    <Td><Tag tone={statusTone(r.status)}>{r.status}</Tag></Td>
                     <Td>{r.property ?? "None"}</Td>
+                    <Td>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <a className="btn btn-primary" style={{ height: 30, fontSize: 12, padding: "0 12px" }} href={r.link}>Go to</a>
+                        {r.status === "AVAILABLE" && (
+                          <button className="btn btn-outline" style={{ height: 30, fontSize: 12, padding: "0 10px" }} disabled={busyKey === r.id} onClick={() => acknowledge(r.id)}>Acknowledge</button>
+                        )}
+                      </div>
+                    </Td>
                   </tr>
                 ))}
               </Table>

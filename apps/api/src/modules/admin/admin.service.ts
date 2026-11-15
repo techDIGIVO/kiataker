@@ -72,8 +72,18 @@ export class AdminService {
       priority: a.priority,
       status: a.status,
       property: a.propertyScope ? properties.get(a.propertyScope) ?? null : null,
+      link: this.actionLink(a.type),
       createdAt: a.createdAt.toISOString(),
     }));
+  }
+
+  /** Where a staff member goes to resolve an Operations-queue item (actions close from the event). */
+  private actionLink(type: string): string {
+    if (type === "tenancy.disputed") return "/admin/reconciliation";
+    if (type === "rent.period_overdue") return "/admin/rent";
+    if (type === "notice.delivery_failed") return "/admin/notices";
+    if (type === "renewal.window_open") return "/admin/renewals";
+    return "/admin";
   }
 
   async controls() {

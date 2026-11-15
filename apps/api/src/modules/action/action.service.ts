@@ -219,6 +219,25 @@ export class ActionService {
     });
   }
 
+  /** Staff acknowledge an Act Now item from the admin (concierge). Never closes it (ACT-04). */
+  async staffAcknowledge(staffId: string, actionId: string): Promise<ActionDto> {
+    const action = await this.prisma.action.findUnique({ where: { id: actionId } });
+    if (!action) throw new NotFound("Action not found");
+    let next: ActionStatus;
+    try {
+      next = actionMachine.next(action.status as ActionStatus, "ACKNOWLEDGE");
+    } catch {
+      throw new Conflict(`Cannot acknowledge from ${action.status}`);
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const a = await tx.action.update({ where: { id: actionId }, data: { status: next } });
+      await tx.actionStatusHistory.create({ data: { actionId, status: next, actorRef: staffId } });
+      await this.audit.record(tx, { actor: staffId, action: "admin.action.acknowledge", objectRef: `action:${actionId}` });
+      return a;
+    });
+    return this.toDto(updated);
+  }
+
   /** Acknowledge an Act Now item (AVAILABLE -> ACKNOWLEDGED). Never closes it (ACT-04). */
   async acknowledge(participantId: string, actionId: string): Promise<ActionDto> {
     const action = await this.prisma.action.findUnique({ where: { id: actionId } });
