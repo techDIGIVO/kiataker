@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { CryptoService } from "../../common/crypto/crypto.service.js";
 import { MetaService } from "./meta.service.js";
+import { AuditService } from "../../common/audit/audit.service.js";
 import { NotFound, Conflict } from "../../common/errors/domain-errors.js";
 import { env } from "../../common/config/env.js";
 
@@ -25,7 +26,41 @@ export class ChannelService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly meta: MetaService,
+    private readonly audit: AuditService,
   ) {}
+
+  // ---- Support inbox (P2) ----
+
+  /** Conversations, newest activity first, from a single scan of the recent message log (no N+1). */
+  async inbox() {
+    const recent = await this.prisma.messageLog.findMany({ where: { channel: "whatsapp" }, orderBy: { at: "desc" }, take: 1000 });
+    const byAddress = new Map<string, { address: string; lastBody: string; lastDirection: string; lastAt: Date; count: number }>();
+    for (const m of recent) {
+      const e = byAddress.get(m.address);
+      if (!e) byAddress.set(m.address, { address: m.address, lastBody: m.body, lastDirection: m.direction, lastAt: m.at, count: 1 });
+      else e.count += 1;
+    }
+    return [...byAddress.values()].map((e) => ({ address: e.address, lastBody: e.lastBody, lastDirection: e.lastDirection, lastAt: e.lastAt.toISOString(), recentCount: e.count }));
+  }
+
+  /** The full message thread for one conversation, oldest first. */
+  async thread(address: string) {
+    const messages = await this.prisma.messageLog.findMany({ where: { channel: "whatsapp", address }, orderBy: { at: "asc" }, take: 300 });
+    return { address, messages: messages.map((m) => ({ direction: m.direction, body: m.body, at: m.at.toISOString() })) };
+  }
+
+  /** Staff reply into a conversation: log it and send over the Cloud API (no-op without credentials). */
+  async staffReply(staffId: string, address: string, text: string) {
+    if (!text?.trim()) throw new Conflict("A reply needs some text");
+    await this.prisma.messageLog.create({ data: { channel: "whatsapp", address, direction: "out", body: text.trim() } });
+    try {
+      await this.meta.sendText(address, text.trim());
+    } catch (e) {
+      this.logger.warn(`Staff reply send failed (logged anyway): ${(e as Error).message}`);
+    }
+    await this.prisma.$transaction((tx) => this.audit.record(tx, { actor: staffId, action: "admin.inbox.reply", objectRef: `inbox:${address}`, reason: "staff reply" }));
+    return { sent: true };
+  }
 
   // ---- Templates ----
 

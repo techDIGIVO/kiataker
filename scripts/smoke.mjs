@@ -1043,6 +1043,16 @@ async function main() {
   const admAdvance = await call("POST", `/internal/renewals/${admRenTen2.json.id}/advance`, {}, staffToken);
   ok("staff advance the possession runway", admAdvance.json.stage === "NOTICE_SERVED");
 
+  // P2: support inbox. Staff see conversations, read a thread, and reply (logged + sent live).
+  const inbox = await call("GET", "/internal/whatsapp/inbox", undefined, staffToken);
+  ok("the support inbox lists conversations", Array.isArray(inbox.json) && inbox.json.some((c) => c.address === waFrom));
+  const thread = await call("GET", `/internal/whatsapp/inbox/${encodeURIComponent(waFrom)}`, undefined, staffToken);
+  ok("a conversation thread loads its messages", thread.json.address === waFrom && thread.json.messages.length > 0);
+  const inboxReply = await call("POST", `/internal/whatsapp/inbox/${encodeURIComponent(waFrom)}/reply`, { text: "Hi from support, how can we help?" }, staffToken);
+  ok("staff reply into a conversation", inboxReply.json.sent === true);
+  const threadAfter = await call("GET", `/internal/whatsapp/inbox/${encodeURIComponent(waFrom)}`, undefined, staffToken);
+  ok("the staff reply appears in the thread", threadAfter.json.messages.some((m) => m.direction === "out" && m.body.includes("from support")));
+
   // P0-05: durable job queue. Enqueue a job, process due jobs, see it reach DONE.
   const job = await call("POST", "/internal/jobs", { kind: "noop", subjectRef: "smoke" }, staffToken);
   ok("staff enqueue a durable job", !!job.json.id);

@@ -33,6 +33,7 @@ const NAV: { group: string; items: { key: string; label: string; href?: string }
     items: [
       { key: "integrations", label: "Integrations & keys", href: "/admin/ai" },
       { key: "whatsapp", label: "WhatsApp channel", href: "/admin/whatsapp" },
+      { key: "inbox", label: "Support inbox", href: "/admin/inbox" },
       { key: "jobs", label: "Job queue", href: "/admin/jobs" },
       { key: "signoff", label: "CEO sign-off", href: "/admin/sign-off" },
       { key: "ndpa", label: "Data requests", href: "/admin/ndpa" },

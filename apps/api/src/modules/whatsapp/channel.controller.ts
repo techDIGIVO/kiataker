@@ -1,12 +1,28 @@
 import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { ChannelService } from "./channel.service.js";
 import { StaffGuard } from "../admin/staff.guard.js";
+import { CurrentUser, type RequestUser } from "../../common/auth/current-user.decorator.js";
 
 /** Admin control of the WhatsApp channel: message templates, quiet hours, notification queue. */
 @UseGuards(StaffGuard)
 @Controller("internal/whatsapp")
 export class ChannelAdminController {
   constructor(private readonly channel: ChannelService) {}
+
+  @Get("inbox")
+  inbox() {
+    return this.channel.inbox();
+  }
+
+  @Get("inbox/:address")
+  thread(@Param("address") address: string) {
+    return this.channel.thread(address);
+  }
+
+  @Post("inbox/:address/reply")
+  reply(@CurrentUser() user: RequestUser, @Param("address") address: string, @Body() body: { text: string }) {
+    return this.channel.staffReply(user.sub, address, body?.text ?? "");
+  }
 
   @Get("templates")
   templates() {
