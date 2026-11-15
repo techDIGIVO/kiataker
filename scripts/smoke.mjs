@@ -1080,6 +1080,32 @@ async function main() {
   const jobsBoard = await call("GET", "/internal/board/jobs", undefined, staffToken);
   ok("the processed job is marked DONE on the queue board", jobsBoard.json.find((j) => j.id === job.json.id)?.state === "DONE");
 
+  // P0-07: team & access (RBAC). CEO Command Centre members are super-admins; others cannot
+  // manage the team. Add, assign, suspend and remove staff; a suspended user cannot sign in.
+  const ceoAccess = await call("GET", "/internal/me/access", undefined, ceoToken);
+  ok("CEO staff are super-admins", ceoAccess.json.isSuperAdmin === true && ceoAccess.json.centres.includes("ceo"));
+  const opsAccess = await call("GET", "/internal/me/access", undefined, staffToken);
+  ok("operations staff are not super-admins", opsAccess.json.isSuperAdmin === false);
+  const teamForbidden = await call("GET", "/internal/team", undefined, staffToken);
+  ok("a non-super-admin cannot manage the team (403)", teamForbidden.status === 403);
+  const team0 = await call("GET", "/internal/team", undefined, ceoToken);
+  ok("the CEO lists the team", Array.isArray(team0.json) && team0.json.length >= 5);
+  const newEmail = `analyst${Math.floor(Math.random() * 100000)}@kiataker.ng`;
+  const addUser = await call("POST", "/internal/team", { displayName: "New Analyst", email: newEmail, password: "temp-pass-123", centreKey: "accounts", role: "analyst" }, ceoToken);
+  ok("the CEO adds a staff user", addUser.json.email === newEmail && addUser.json.centres.some((c) => c.centre === "accounts"));
+  const newLogin = await call("POST", "/auth/login", { email: newEmail, password: "temp-pass-123" });
+  ok("the new staff user can sign in", !!newLogin.json.accessToken);
+  const assignCentre = await call("POST", `/internal/team/${addUser.json.id}/centres`, { centreKey: "legal", role: "reviewer" }, ceoToken);
+  ok("the CEO assigns another centre", assignCentre.json.centres.some((c) => c.centre === "legal"));
+  const unassignCentre = await call("DELETE", `/internal/team/${addUser.json.id}/centres/legal`, undefined, ceoToken);
+  ok("the CEO removes a centre", !unassignCentre.json.centres.some((c) => c.centre === "legal"));
+  const suspendUser = await call("PUT", `/internal/team/${addUser.json.id}/status`, { status: "SUSPENDED" }, ceoToken);
+  ok("the CEO suspends a user", suspendUser.json.status === "SUSPENDED");
+  const suspendedLogin = await call("POST", "/auth/login", { email: newEmail, password: "temp-pass-123" });
+  ok("a suspended user cannot sign in (401)", suspendedLogin.status === 401);
+  const removeUser = await call("DELETE", `/internal/team/${addUser.json.id}`, undefined, ceoToken);
+  ok("the CEO removes a user", removeUser.json.removed === true);
+
   // The whole WhatsApp channel fails closed behind its control (BP-08). Re-enabled right after.
   await call("PUT", "/internal/controls/channel.whatsapp", { enabled: false, reason: "smoke" }, staffToken);
   const channelOff = await chat("2348090000001", { text: "hi" });

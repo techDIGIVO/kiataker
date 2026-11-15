@@ -27,6 +27,7 @@ import { NdpaModule } from "./modules/ndpa/ndpa.module.js";
 import { TemplatesModule } from "./modules/templates/templates.module.js";
 import { InformationModule } from "./modules/information/information.module.js";
 import { QmsModule } from "./modules/qms/qms.module.js";
+import { TeamModule } from "./modules/team/team.module.js";
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { QmsModule } from "./modules/qms/qms.module.js";
     TemplatesModule,
     InformationModule,
     QmsModule,
+    TeamModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

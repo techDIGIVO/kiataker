@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { clearToken, getToken } from "@/lib/admin-api";
+import { clearToken, getToken, apiGet } from "@/lib/admin-api";
 import { LogoMark } from "@/components/brand";
 
-/** Nav for the admin. Built tools are links; the other Command Centres are marked "soon"
- *  so the admin honestly shows what is in place and what is not (the user asked for this). */
-const NAV: { group: string; items: { key: string; label: string; href?: string }[] }[] = [
+/** Nav for the admin. Items flagged superAdmin only show for CEO Command Centre members (P0-07). */
+const NAV: { group: string; items: { key: string; label: string; href?: string; superAdmin?: boolean }[] }[] = [
   {
     group: "Operations Command Centre",
     items: [
@@ -43,12 +42,13 @@ const NAV: { group: string; items: { key: string; label: string; href?: string }
     ],
   },
   {
-    group: "Other Command Centres (soon)",
+    group: "Command Centres",
     items: [
-      { key: "ceo", label: "CEO" },
-      { key: "product", label: "Product Management" },
-      { key: "legal", label: "Legal & Compliance" },
-      { key: "accounts", label: "Accounts" },
+      { key: "ceo", label: "CEO", href: "/admin/ceo", superAdmin: true },
+      { key: "product", label: "Product Management", href: "/admin/product" },
+      { key: "legal", label: "Legal & Compliance", href: "/admin/legal" },
+      { key: "accounts", label: "Accounts", href: "/admin/accounts" },
+      { key: "team", label: "Team & access", href: "/admin/team", superAdmin: true },
     ],
   },
 ];
@@ -67,6 +67,7 @@ export function AdminShell({
   children: React.ReactNode;
 }) {
   const [ready, setReady] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
@@ -74,6 +75,9 @@ export function AdminShell({
       return;
     }
     setReady(true);
+    apiGet<{ isSuperAdmin: boolean }>("/internal/me/access")
+      .then((a) => setIsSuperAdmin(a.isSuperAdmin))
+      .catch(() => setIsSuperAdmin(false));
   }, []);
 
   function signOut() {
@@ -90,13 +94,16 @@ export function AdminShell({
           <LogoMark color="#fff" />
           <span style={{ fontFamily: "var(--k-font-heading)", fontWeight: 700, fontSize: 19 }}>kiataker</span>
         </div>
-        {NAV.map((section) => (
+        {NAV.map((section) => {
+          const items = section.items.filter((i) => !i.superAdmin || isSuperAdmin);
+          if (items.length === 0) return null;
+          return (
           <div key={section.group}>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8FC4AC", padding: "0 10px 8px" }}>
               {section.group}
             </div>
             <nav style={{ display: "grid", gap: 3 }}>
-              {section.items.map((item) => {
+              {items.map((item) => {
                 const isActive = item.key === active;
                 const disabled = !item.href;
                 const base = { padding: "10px 12px", borderRadius: 9, fontSize: 14.5, display: "block", textDecoration: "none" } as const;
@@ -125,7 +132,8 @@ export function AdminShell({
               })}
             </nav>
           </div>
-        ))}
+          );
+        })}
         <button
           onClick={signOut}
           style={{ marginTop: "auto", background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 9, height: 42, cursor: "pointer", fontWeight: 600 }}

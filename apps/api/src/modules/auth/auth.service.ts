@@ -160,6 +160,7 @@ export class AuthService {
     if (!this.crypto.verifyPassword(input.password, contact.participant.passwordHash)) {
       throw new Unauthenticated("Email or password is wrong");
     }
+    if (contact.participant.status !== "ACTIVE") throw new Unauthenticated("This account is not active");
     return this.issueTokens(contact.participant.id, contact.participant.kind);
   }
 

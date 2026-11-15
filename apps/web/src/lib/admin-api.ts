@@ -49,7 +49,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return json as T;
 }
 
-export async function apiSend<T>(method: "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const token = getToken();
   const res = await fetch(`${V1}${path}`, {
     method,

@@ -88,6 +88,25 @@ test("the buildings board renders", async ({ page }) => {
   await expect(page.getByText(/holding both flats and shops is mixed-use/i)).toBeVisible();
 });
 
+test("a Command Centre landing page renders", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/accounts");
+  await expect(page.getByRole("heading", { name: /Accounts Command Centre/i })).toBeVisible();
+  await expect(page.getByText(/Statements/i).first()).toBeVisible();
+});
+
+test("the CEO manages the team (super-admin)", async ({ page }) => {
+  await page.goto("/admin/login");
+  await page.locator('input[type="email"]').fill("ceo@kiataker.ng");
+  await page.locator('input[type="password"]').fill("kiataker-dev");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.waitForURL("**/admin");
+  await page.goto("/admin/team");
+  await expect(page.getByRole("heading", { name: "Team & access", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add a staff user" })).toBeVisible();
+  await expect(page.getByText(/super-admin/i).first()).toBeVisible();
+});
+
 test("the QMS workbench renders", async ({ page }) => {
   await signIn(page);
   await page.goto("/admin/qms");
