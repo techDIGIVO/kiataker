@@ -13,13 +13,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 1,
   reporter: [["list"]],
-  // The dev server compiles pages on first hit, so allow generous timeouts.
-  timeout: 60_000,
-  expect: { timeout: 15_000 },
+  // The dev server compiles each route on first hit; under serial load that cold-compile can be
+  // slow, so allow generous timeouts (a production build serves pre-compiled pages and is fast).
+  timeout: 90_000,
+  expect: { timeout: 20_000 },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
     actionTimeout: 15_000,
-    navigationTimeout: 30_000,
+    navigationTimeout: 60_000,
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
