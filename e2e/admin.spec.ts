@@ -88,6 +88,13 @@ test("the buildings board renders", async ({ page }) => {
   await expect(page.getByText(/holding both flats and shops is mixed-use/i)).toBeVisible();
 });
 
+test("the QMS workbench renders", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/qms");
+  await expect(page.getByRole("heading", { name: "Quality (QMS)", exact: true })).toBeVisible();
+  await expect(page.getByText(/Review each Property File/i)).toBeVisible();
+});
+
 test("the statements board renders", async ({ page }) => {
   await signIn(page);
   await page.goto("/admin/statements");

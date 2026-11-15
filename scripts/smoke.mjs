@@ -1043,6 +1043,16 @@ async function main() {
   const admAdvance = await call("POST", `/internal/renewals/${admRenTen2.json.id}/advance`, {}, staffToken);
   ok("staff advance the possession runway", admAdvance.json.stage === "NOTICE_SERVED");
 
+  // P4: QMS workbench. Staff review a Property File and set its QC status.
+  const qmsBoard0 = await call("GET", "/internal/board/qms", undefined, staffToken);
+  ok("the QMS workbench lists property files with QC status", qmsBoard0.json.counts && Array.isArray(qmsBoard0.json.rows) && qmsBoard0.json.rows.length >= 1);
+  const qmsReview = await call("PUT", `/internal/qms/${somProp.id}`, { qcStatus: "IN_REVIEW" }, staffToken);
+  ok("staff put a property into review", qmsReview.json.qcStatus === "IN_REVIEW");
+  const qmsFlagNoNote = await call("PUT", `/internal/qms/${somProp.id}`, { qcStatus: "FLAGGED" }, staffToken);
+  ok("flagging without a note is refused", qmsFlagNoNote.status === 409);
+  const qmsPass = await call("PUT", `/internal/qms/${somProp.id}`, { qcStatus: "PASSED" }, staffToken);
+  ok("staff pass a property file", qmsPass.json.qcStatus === "PASSED");
+
   // P4: Information outputs. A landlord rent statement for staff, the landlord API, and chat.
   const stmt = await call("GET", `/internal/statements/${signup.json.participantId}`, undefined, staffToken);
   ok("staff pull a landlord statement with totals", stmt.json.totals && typeof stmt.json.totals.chargedKobo === "string" && Array.isArray(stmt.json.tenancies));

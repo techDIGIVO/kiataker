@@ -26,6 +26,7 @@ import { ScopeModule } from "./modules/scope/scope.module.js";
 import { NdpaModule } from "./modules/ndpa/ndpa.module.js";
 import { TemplatesModule } from "./modules/templates/templates.module.js";
 import { InformationModule } from "./modules/information/information.module.js";
+import { QmsModule } from "./modules/qms/qms.module.js";
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { InformationModule } from "./modules/information/information.module.js";
     NdpaModule,
     TemplatesModule,
     InformationModule,
+    QmsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

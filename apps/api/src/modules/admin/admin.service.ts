@@ -164,25 +164,30 @@ export class AdminService {
     });
   }
 
-  /** Arrears board: overdue rent charges grouped by tenancy (GJ-11). */
+  /** Arrears board: overdue rent charges aggregated by tenancy in the database (GJ-11). */
   async arrearsBoard() {
-    const overdue = await this.prisma.rentCharge.findMany({ where: { status: "OVERDUE" }, orderBy: { dueDate: "asc" }, take: 300 });
-    const byTenancy = new Map<string, { tenancyId: string; count: number; amountKobo: bigint; oldestDue: Date }>();
-    for (const c of overdue) {
-      const cur = byTenancy.get(c.tenancyId);
-      if (cur) {
-        cur.count += 1;
-        cur.amountKobo += c.amountKobo;
-        if (c.dueDate < cur.oldestDue) cur.oldestDue = c.dueDate;
-      } else {
-        byTenancy.set(c.tenancyId, { tenancyId: c.tenancyId, count: 1, amountKobo: c.amountKobo, oldestDue: c.dueDate });
-      }
-    }
-    const groups = [...byTenancy.values()];
-    const tenancies = await this.labels.tenancies(groups.map((r) => r.tenancyId));
-    return groups.map((r) => {
-      const label = tenancies.get(r.tenancyId);
-      return { tenancyId: r.tenancyId, property: label?.property ?? null, tenant: label?.tenant ?? null, overdueCount: r.count, arrearsKobo: r.amountKobo.toString(), oldestDue: r.oldestDue.toISOString() };
+    // Aggregate in the DB (groupBy), not by fetching rows, so the board is correct and fast at
+    // any volume: one row per tenancy with arrears, oldest-due first, capped at 300 tenancies.
+    const grouped = await this.prisma.rentCharge.groupBy({
+      by: ["tenancyId"],
+      where: { status: "OVERDUE" },
+      _count: { _all: true },
+      _sum: { amountKobo: true },
+      _min: { dueDate: true },
+      orderBy: { _min: { dueDate: "asc" } },
+      take: 300,
+    });
+    const tenancies = await this.labels.tenancies(grouped.map((g) => g.tenancyId));
+    return grouped.map((g) => {
+      const label = tenancies.get(g.tenancyId);
+      return {
+        tenancyId: g.tenancyId,
+        property: label?.property ?? null,
+        tenant: label?.tenant ?? null,
+        overdueCount: g._count._all,
+        arrearsKobo: (g._sum.amountKobo ?? 0n).toString(),
+        oldestDue: g._min.dueDate?.toISOString() ?? null,
+      };
     });
   }
 

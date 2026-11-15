@@ -26,6 +26,7 @@ const NAV: { group: string; items: { key: string; label: string; href?: string }
       { key: "documents", label: "Documents", href: "/admin/documents" },
       { key: "templates", label: "Template studio", href: "/admin/templates" },
       { key: "reconciliation", label: "Reconciliation", href: "/admin/reconciliation" },
+      { key: "qms", label: "Quality (QMS)", href: "/admin/qms" },
       { key: "scope", label: "Scope of management", href: "/admin/scope" },
     ],
   },
