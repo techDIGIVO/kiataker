@@ -1,0 +1,41 @@
+{
+  "name": "@kiataker/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "prisma"],
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:check": "prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url \"$SHADOW_DATABASE_URL\" --exit-code && echo 'schema and migrations agree'",
+    "seed": "tsx prisma/seed.ts",
+    "reset": "prisma migrate reset --force",
+    "studio": "prisma studio",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"(db: no lint)\"",
+    "test": "echo \"(db: no unit tests)\""
+  },
+  "dependencies": {
+    "@prisma/client": "6.1.0"
+  },
+  "devDependencies": {
+    "prisma": "6.1.0",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

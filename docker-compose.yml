@@ -1,0 +1,49 @@
+# Kiataker local stack (PRD §44.1). Optional: local dev can also use a native Postgres.
+# Postgres is on host port 5433 to avoid clashing with a native install on 5432.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kiataker-postgres
+    environment:
+      POSTGRES_USER: kiataker
+      POSTGRES_PASSWORD: kiataker
+      POSTGRES_DB: kiataker_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - kiataker_pgdata:/var/lib/postgresql/data
+      - ./packages/db/docker/init-shadow.sql:/docker-entrypoint-initdb.d/init-shadow.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kiataker -d kiataker_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: kiataker-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - kiataker_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: kiataker-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  kiataker_pgdata:
+  kiataker_minio:

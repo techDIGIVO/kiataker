@@ -1,0 +1,28 @@
+{
+  "name": "@kiataker/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(web: lint via typecheck for now)\"",
+    "test": "echo \"(web: e2e via Playwright in a later phase)\""
+  },
+  "dependencies": {
+    "@kiataker/contracts": "workspace:*",
+    "@kiataker/copy": "workspace:*",
+    "@kiataker/tokens": "workspace:*",
+    "next": "15.1.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "typescript": "5.7.2"
+  }
+}

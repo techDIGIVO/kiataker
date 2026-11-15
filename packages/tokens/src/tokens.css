@@ -1,0 +1,42 @@
+/* Kiataker design tokens as CSS custom properties (PRD §38). Imported by web surfaces. */
+:root {
+  /* Brand green */
+  --k-green-primary: #146b4a;
+  --k-green-hover: #105e41;
+  --k-green-deep: #0b5138;
+  --k-green-soft: #eaf3ee;
+  --k-green-mist: #cfe2d6;
+
+  /* Canvas */
+  --k-canvas: #ffffff;
+  --k-ivory: #f5f1e4;
+  --k-surface-muted: #f4f1ea;
+
+  /* Text */
+  --k-text-primary: #142018;
+  --k-text-secondary: #536159;
+  --k-text-muted: #5f6d66;
+  --k-border: #e3ded5;
+
+  /* Status */
+  --k-warning-fg: #8a5b00;
+  --k-warning-bg: #fdf3e0;
+  --k-danger-fg: #a13b2e;
+  --k-danger-bg: #fbeeec;
+  --k-info-fg: #1e4e79;
+  --k-info-bg: #e8f0f7;
+
+  /* Radius */
+  --k-radius-small: 7px;
+  --k-radius-control: 9px;
+  --k-radius-card: 14px;
+  --k-radius-large: 18px;
+
+  /* Shadow */
+  --k-shadow-card: 0 2px 6px rgba(20, 32, 24, 0.04);
+
+  /* Type */
+  --k-font-heading: "Outfit", system-ui, sans-serif;
+  --k-font-body: "Plus Jakarta Sans", system-ui, sans-serif;
+  --k-font-mono: "JetBrains Mono", ui-monospace, monospace;
+}

@@ -1,0 +1,1371 @@
+// Kiataker data model (PRD §28). One PostgreSQL database, single source of truth,
+// organised by domain. Money is BigInt kobo, never floating point. Every table has
+// id (UUID v7), createdAt, updatedAt, createdBy, updatedBy. Business history is append-only.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum OrganisationKind {
+  PLATFORM_OPERATOR
+  PROPERTY_MANAGER
+}
+
+enum ParticipantKind {
+  LANDLORD
+  REPRESENTATIVE
+  PROVIDER_USER
+  STAFF
+}
+
+enum ParticipantStatus {
+  ACTIVE
+  SUSPENDED
+  ERASED
+}
+
+enum ContactChannel {
+  EMAIL
+  PHONE
+  WHATSAPP
+}
+
+enum TermsKind {
+  TERMS_OF_USE
+  MANDATE
+  PRIVACY_NOTICE
+}
+
+enum MandateStatus {
+  PENDING_ACCEPTANCE
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  EXPIRED
+}
+
+enum BuildingUse {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED_USE
+}
+
+enum UnitUse {
+  RESIDENTIAL
+  SHOP
+  OFFICE
+  WAREHOUSE
+  OTHER_BUSINESS
+}
+
+enum PropertyState {
+  DRAFT
+  MANAGED
+  TERMINATED
+}
+
+enum QcStatus {
+  NOT_STARTED
+  IN_REVIEW
+  PASSED
+  FLAGGED
+}
+
+enum OccupancyState {
+  EXPECTED
+  ACTIVE
+  VACATING
+  VACATED
+  POSSESSION_DISPUTED
+  CLOSED
+}
+
+enum TenancyRoute {
+  EXISTING
+  ORIGINATION
+}
+
+enum TenancyManagementState {
+  DRAFT
+  MANAGED
+  ENDED
+}
+
+enum TenancyLifecyclePhase {
+  FUTURE_DATED
+  CURRENT
+  EXPIRED
+}
+
+enum TenancyStatus {
+  RECORDED
+  TENANT_NOTIFIED
+  TENANT_CONFIRMED
+  TENANT_DISPUTED
+  RECONCILED
+  RENEWED
+  ENDED
+}
+
+enum TenancyParticipantRole {
+  TENANT
+  PERMITTED_OCCUPANT
+  GUARANTOR
+}
+
+enum TenantProfileSource {
+  LANDLORD_SUPPLIED
+}
+
+enum ActorKind {
+  LANDLORD
+  TENANT
+  PROVIDER
+  STAFF
+  SYSTEM
+}
+
+enum ActionStatus {
+  PENDING
+  AVAILABLE
+  ACKNOWLEDGED
+  IN_PROGRESS
+  WAITING_ON_OTHER_PARTY
+  BLOCKED
+  OVERDUE
+  COMPLETED
+  CANCELLED
+  ESCALATED
+}
+
+enum ActionPriority {
+  CRITICAL
+  URGENT
+  OVERDUE
+  IMPORTANT
+  NORMAL
+}
+
+enum SecureTaskPurpose {
+  SIGN
+  APPROVE_NOTICE
+  PAYEE_CHANGE
+  CLASS_C_DECISION
+  QUOTE_ABOVE_LIMIT
+  TENANT_CONFIRM
+}
+
+enum ControlRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ============================================================================
+// Identity, organisation, terms (modules: identity, terms)
+// ============================================================================
+
+model Organisation {
+  id            String           @id @default(uuid(7))
+  legalName     String
+  kind          OrganisationKind
+  rcNumber      String?
+  lasreraNumber String?
+  scumlRef      String?
+  address       String?
+  taxIds        Json?
+  active        Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  properties   Property[]
+  mandates     Mandate[]
+  commandSeats CommandCentre[]
+  templates    Template[]
+}
+
+model Participant {
+  id            String            @id @default(uuid(7))
+  displayName   String
+  kind          ParticipantKind
+  status        ParticipantStatus @default(ACTIVE)
+  emailVerified Boolean           @default(false)
+  phoneVerified Boolean           @default(false)
+  passwordHash  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  contactPoints     ContactPoint[]
+  sessions          Session[]
+  termsAcceptances  TermsAcceptance[]
+  seatAssignments   SeatAssignment[]
+  propertyLinks     PropertyParticipant[]
+  notificationPrefs NotificationPreference[]
+  pushDevices       PushDevice[]
+}
+
+model ContactPoint {
+  id             String         @id @default(uuid(7))
+  participantId  String
+  channel        ContactChannel
+  valueHash      String // deterministic hash for lookup (§28.2)
+  valueEncrypted String // encrypted at rest; no raw identity in logs
+  verifiedAt     DateTime?
+  primary        Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  createdBy      String?
+  updatedBy      String?
+
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([channel, valueHash])
+  @@index([participantId])
+}
+
+model ContactVerificationCode {
+  id          String         @id @default(uuid(7))
+  targetHash  String
+  codeHash    String
+  channel     ContactChannel
+  expiresAt   DateTime
+  attempts    Int            @default(0)
+  consumedAt  DateTime?
+  supersededAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([targetHash])
+}
+
+model Session {
+  id              String    @id @default(uuid(7))
+  participantId   String
+  deviceId        String?
+  refreshTokenHash String
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  lastStepUpAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([participantId])
+}
+
+model TermsDocument {
+  id             String        @id @default(uuid(7))
+  kind           TermsKind
+  organisationId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  versions       TermsVersion[]
+}
+
+model TermsVersion {
+  id              String         @id @default(uuid(7))
+  termsDocumentId String
+  version         Int
+  contentHash     String
+  effectiveFrom   DateTime
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  document    TermsDocument @relation(fields: [termsDocumentId], references: [id])
+  acceptances TermsAcceptanceVersion[]
+
+  @@unique([termsDocumentId, version])
+}
+
+model TermsAcceptance {
+  id            String   @id @default(uuid(7))
+  participantId String
+  channel       String
+  ip            String?
+  device        String?
+  acceptedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participant Participant              @relation(fields: [participantId], references: [id])
+  versions    TermsAcceptanceVersion[]
+
+  @@index([participantId])
+}
+
+// Join: one acceptance covers several terms versions (Terms + Mandate + Privacy in one step, ACC-02)
+model TermsAcceptanceVersion {
+  id             String @id @default(uuid(7))
+  acceptanceId   String
+  termsVersionId String
+
+  acceptance   TermsAcceptance @relation(fields: [acceptanceId], references: [id])
+  termsVersion TermsVersion    @relation(fields: [termsVersionId], references: [id])
+
+  @@unique([acceptanceId, termsVersionId])
+}
+
+model ConsentRecord {
+  id          String   @id @default(uuid(7))
+  participantId String?
+  subjectRef  String?
+  consentType String
+  given       Boolean
+  channel     String
+  version     Int
+  at          DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([participantId])
+}
+
+// ---- Admin: Command Centres, seats, roles, permissions ----
+
+model CommandCentre {
+  id             String   @id @default(uuid(7))
+  key            String   @unique // ceo, operations, product, legal, accounts
+  name           String
+  organisationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  seats        Seat[]
+}
+
+model Seat {
+  id              String   @id @default(uuid(7))
+  commandCentreId String
+  role            String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  commandCentre CommandCentre    @relation(fields: [commandCentreId], references: [id])
+  assignments   SeatAssignment[]
+}
+
+model SeatAssignment {
+  id            String    @id @default(uuid(7))
+  seatId        String
+  participantId String
+  fromDate      DateTime  @default(now())
+  toDate        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  seat        Seat        @relation(fields: [seatId], references: [id])
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([participantId])
+}
+
+model SystemRole {
+  id          String           @id @default(uuid(7))
+  key         String           @unique
+  name        String
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  id         String @id @default(uuid(7))
+  roleId     String
+  permission String
+  scope      String // all | assigned | own
+
+  role SystemRole @relation(fields: [roleId], references: [id])
+
+  @@unique([roleId, permission, scope])
+}
+
+// ============================================================================
+// Property (module: property)
+// ============================================================================
+
+model Property {
+  id                String        @id @default(uuid(7))
+  reference         String        @unique
+  organisationScope String
+  addressNormalised String
+  addressRaw        String
+  type              String?
+  buildingUse       BuildingUse
+  unitUse           UnitUse?
+  building          String?
+  unit              String?
+  buildingId        String? // set when this property is a unit within a grouped Building (GJ-24)
+  state             PropertyState @default(DRAFT)
+  operatingState    String?
+  qcStatus          QcStatus      @default(NOT_STARTED)
+  publicSearchOptIn Boolean       @default(false)
+  managedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  createdBy         String?
+  updatedBy         String?
+
+  organisation   Organisation          @relation(fields: [organisationScope], references: [id])
+  buildingRecord Building?             @relation(fields: [buildingId], references: [id])
+  participants   PropertyParticipant[]
+  mandates       Mandate[]
+  standingInstrs StandingInstruction[]
+  occupancies    Occupancy[]
+  tenancies      Tenancy[]
+  timeline       PropertyTimelineEvent[]
+
+  @@index([organisationScope])
+  @@index([state])
+  @@index([buildingId])
+}
+
+/// A grouped building that holds more than one unit, each a Property with its own use (GJ-24).
+/// A building with both residential and commercial units is MIXED_USE; the use is derived from
+/// its units, never asserted, and each unit resolves the regime (residential or commercial) that
+/// governs it. Standalone single properties do not need a Building; they keep buildingId null.
+model Building {
+  id         String     @id @default(uuid(7))
+  reference  String     @unique // KT-BLD-XXXX
+  landlordId String
+  addressRaw String
+  use        String     @default("UNKNOWN") // RESIDENTIAL | COMMERCIAL | MIXED_USE | UNKNOWN
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  units Property[]
+
+  @@index([landlordId])
+}
+
+model PropertyParticipant {
+  id                 String   @id @default(uuid(7))
+  propertyId         String
+  participantId      String
+  basis              String // PB codes (Participant Basis)
+  scope              String?
+  authorityEvidence  Json?
+  fromDate           DateTime @default(now())
+  toDate             DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  property    Property    @relation(fields: [propertyId], references: [id])
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([propertyId])
+  @@index([participantId])
+}
+
+model Mandate {
+  id             String        @id @default(uuid(7))
+  propertyId     String
+  organisationId String
+  termsVersionId String?
+  status         MandateStatus @default(PENDING_ACCEPTANCE)
+  effectiveFrom  DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  createdBy      String?
+  updatedBy      String?
+
+  property     Property     @relation(fields: [propertyId], references: [id])
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+
+  @@index([propertyId])
+}
+
+model StandingInstruction {
+  id         String    @id @default(uuid(7))
+  propertyId String
+  kind       String
+  limitKobo  BigInt?
+  validFrom  DateTime
+  validTo    DateTime? // never covers Class C decisions
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+}
+
+// ============================================================================
+// Tenancy (modules: tenancy, origination)
+// ============================================================================
+
+model Occupancy {
+  id         String         @id @default(uuid(7))
+  propertyId String
+  state      OccupancyState @default(EXPECTED)
+  fromDate   DateTime?
+  toDate     DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  property  Property  @relation(fields: [propertyId], references: [id])
+  tenancies Tenancy[]
+
+  @@index([propertyId])
+}
+
+model Tenancy {
+  id                       String                 @id @default(uuid(7))
+  occupancyId              String
+  propertyId               String
+  route                    TenancyRoute
+  managementState          TenancyManagementState @default(DRAFT)
+  lifecyclePhase           TenancyLifecyclePhase  @default(FUTURE_DATED)
+  status                   TenancyStatus          @default(RECORDED)
+  commencementDate         DateTime?
+  expiryDate               DateTime?
+  acceptedCommencementSource String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  createdBy                String?
+  updatedBy                String?
+
+  occupancy    Occupancy            @relation(fields: [occupancyId], references: [id])
+  property     Property             @relation(fields: [propertyId], references: [id])
+  terms        TenancyTerm[]
+  participants TenancyParticipant[]
+  affirmations BaseTruthAffirmation[]
+  accuracyAcks TenancyAccuracyAcknowledgement[]
+  renewalRunway RenewalRunway[]
+
+  @@index([propertyId])
+  @@index([occupancyId])
+}
+
+model TenancyTerm {
+  id               String   @id @default(uuid(7))
+  tenancyId        String
+  version          Int
+  rentKobo         BigInt
+  frequency        String
+  cautionFeeKobo   BigInt?
+  serviceChargeKobo BigInt?
+  noticePeriod     String?
+  rentReviewTerms  String?
+  inspectionTerms  String?
+  breakClause      String?
+  specialTerms     String?
+  effectiveFrom    DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
+
+  @@unique([tenancyId, version])
+}
+
+model TenantProfile {
+  id           String              @id @default(uuid(7))
+  name         String
+  contactPoints Json // encrypted (§28.1)
+  source       TenantProfileSource @default(LANDLORD_SUPPLIED)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  tenancyLinks TenancyParticipant[]
+}
+
+model TenancyParticipant {
+  id             String                 @id @default(uuid(7))
+  tenancyId      String
+  tenantProfileId String
+  role           TenancyParticipantRole
+  liabilityBasis String?
+  fromDate       DateTime               @default(now())
+  toDate         DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  tenancy       Tenancy       @relation(fields: [tenancyId], references: [id])
+  tenantProfile TenantProfile @relation(fields: [tenantProfileId], references: [id])
+
+  @@index([tenancyId])
+}
+
+// Tenancy terms bind the tenant only after four affirmations (BP-04). Append-only.
+model BaseTruthAffirmation {
+  id          String    @id @default(uuid(7))
+  tenancyId   String
+  number      Int // 1 to 4
+  actorKind   ActorKind
+  answer      String
+  evidenceRef String?
+  at          DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
+
+  @@unique([tenancyId, number])
+  @@index([tenancyId])
+}
+
+model TenancyAccuracyAcknowledgement {
+  id          String   @id @default(uuid(7))
+  tenancyId   String
+  landlordId  String
+  copyVersion Int
+  channel     String
+  at          DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
+
+  @@index([tenancyId])
+}
+
+model RenewalRunway {
+  id              String   @id @default(uuid(7))
+  tenancyId       String
+  lastSafeNoticeDate DateTime?
+  stage           String
+  decision        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
+
+  @@index([tenancyId])
+}
+
+// ============================================================================
+// Action Centre (module: actions) — §9. A projection, rebuildable from events.
+// ============================================================================
+
+model Action {
+  id               String         @id @default(uuid(7))
+  type             String
+  sourceWorkflow   String
+  sourceRecordRef  String
+  propertyScope    String?
+  assigneeRef      String?
+  priority         ActionPriority @default(NORMAL)
+  dueTime          DateTime?
+  title            String
+  callToAction     String
+  controlKey       String?
+  status           ActionStatus   @default(PENDING)
+  evidenceRequired Boolean        @default(false)
+  escalationRule   String?
+  openDedupeSlot   String // unique open-dedupe slot per obligation (ACT-05)
+  causedByEventId  String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  history ActionStatusHistory[]
+
+  @@unique([openDedupeSlot])
+  @@index([status, priority])
+  @@index([propertyScope])
+}
+
+model ActionStatusHistory {
+  id            String       @id @default(uuid(7))
+  actionId      String
+  status        ActionStatus
+  actorRef      String?
+  sourceEventId String?
+  evidenceRef   String?
+  at            DateTime     @default(now())
+
+  action Action @relation(fields: [actionId], references: [id])
+
+  @@index([actionId])
+}
+
+model ActionRoutingRule {
+  id        String   @id @default(uuid(7))
+  eventType String   @unique
+  decision  String // decide | protect | know | record | digest
+  priority  ActionPriority
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// Documents, notices, secure tasks (modules: templates, notices, documents, tasks)
+// ============================================================================
+
+model Template {
+  id             String            @id @default(uuid(7))
+  code           String // NT and AG codes
+  organisationId String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  versions       TemplateVersion[]
+  organisation   Organisation?     @relation(fields: [organisationId], references: [id])
+
+  @@unique([code])
+}
+
+model TemplateVersion {
+  id               String    @id @default(uuid(7))
+  templateId       String
+  version          Int
+  body             String
+  variables        Json
+  legalBasis       String?
+  counselApprovedBy String?
+  counselApprovedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  template Template @relation(fields: [templateId], references: [id])
+
+  @@unique([templateId, version])
+}
+
+model Notice {
+  id               String    @id @default(uuid(7))
+  propertyId       String
+  tenancyId        String?
+  templateVersionId String?
+  status           String
+  contentHash      String?
+  authorisedBy     String?
+  effectiveDate    DateTime?
+  serviceDate      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  recipients NoticeRecipient[]
+
+  @@index([propertyId])
+}
+
+model NoticeRecipient {
+  id        String   @id @default(uuid(7))
+  noticeId  String
+  basis     String
+  channel   String
+  providerRef String?
+  outcome   String?
+  at        DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notice Notice @relation(fields: [noticeId], references: [id])
+
+  @@index([noticeId])
+}
+
+model Document {
+  id         String            @id @default(uuid(7))
+  kind       String
+  subjectRef String
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  versions   DocumentVersion[]
+}
+
+model DocumentVersion {
+  id            String    @id @default(uuid(7))
+  documentId    String
+  version       Int
+  storageKey    String
+  sha256        String
+  canonicalHash String
+  sealedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@unique([documentId, version])
+}
+
+model SecureTask {
+  id                String            @id @default(uuid(7))
+  purpose           SecureTaskPurpose
+  recipientRole     String
+  destinationHash   String
+  subjectRef        String
+  documentVersionId String?
+  documentHash      String?
+  tokenHash         String            @unique
+  expiresAt         DateTime
+  attempts          Int               @default(0)
+  revokedAt         DateTime?
+  supersededBy      String?
+  verifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  responses TaskResponse[]
+
+  @@index([subjectRef])
+}
+
+model TaskResponse {
+  id       String   @id @default(uuid(7))
+  taskId   String
+  kind     String
+  payload  Json?
+  device   String?
+  ip       String?
+  at       DateTime @default(now())
+
+  task SecureTask @relation(fields: [taskId], references: [id])
+
+  @@index([taskId])
+}
+
+// ============================================================================
+// Platform infrastructure (modules: controls, settings, audit, notifications)
+// ============================================================================
+
+// Append-only transactional outbox (§41.3, BP-15). Events commit with the business write.
+model OutboxEvent {
+  id          String    @id @default(uuid(7))
+  type        String
+  aggregateRef String
+  payload     Json
+  occurredAt  DateTime  @default(now())
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([publishedAt])
+  @@index([aggregateRef])
+}
+
+// Every mutating command takes an Idempotency-Key header (§28.2). Retries never duplicate.
+model IdempotencyKey {
+  id          String   @id @default(uuid(7))
+  key         String   @unique
+  actor       String
+  requestHash String
+  responseRef Json?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+}
+
+model ScheduledJob {
+  id         String    @id @default(uuid(7))
+  kind       String
+  subjectRef String?
+  runAt      DateTime
+  state      String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([state, runAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid(7))
+  actor     String
+  seat      String?
+  reason    String?
+  action    String
+  objectRef String
+  before    Json?
+  after     Json?
+  at        DateTime @default(now())
+  ip        String?
+
+  @@index([objectRef])
+  @@index([actor])
+}
+
+model AccessLog {
+  id        String   @id @default(uuid(7))
+  actor     String
+  objectRef String
+  action    String
+  at        DateTime @default(now())
+  ip        String?
+
+  @@index([objectRef])
+}
+
+model PropertyTimelineEvent {
+  id          String   @id @default(uuid(7))
+  propertyId  String
+  eventType   String
+  summary     String
+  evidenceRefs Json?
+  contentHash String?
+  at          DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+}
+
+// Controls first (BP-08, §26). Every feature entry point checks its platform control.
+model PlatformControl {
+  id           String      @id @default(uuid(7))
+  key          String      @unique
+  parentKey    String?
+  dependencies Json?
+  risk         ControlRisk @default(LOW)
+  enabled      Boolean     @default(false)
+  environment  String      @default("all")
+  savedState   Json?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Setting {
+  id            String          @id @default(uuid(7))
+  key           String          @unique
+  value         Json
+  effectiveFrom DateTime        @default(now())
+  author        String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  versions      SettingVersion[]
+}
+
+model SettingVersion {
+  id            String   @id @default(uuid(7))
+  settingId     String
+  value         Json
+  effectiveFrom DateTime
+  author        String?
+  createdAt     DateTime @default(now())
+
+  setting Setting @relation(fields: [settingId], references: [id])
+
+  @@index([settingId])
+}
+
+model NotificationPreference {
+  id            String   @id @default(uuid(7))
+  participantId String
+  channel       String
+  quietHours    Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([participantId])
+}
+
+model PushDevice {
+  id            String   @id @default(uuid(7))
+  participantId String
+  token         String
+  platform      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([participantId])
+}
+
+model CopyEntry {
+  id        String   @id @default(uuid(7))
+  key       String
+  locale    String
+  text      String
+  version   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, locale, version])
+}
+
+// ============================================================================
+// Site CMS (landing page builder). A page is an ordered tree of blocks stored as
+// JSON. "draft" is edited in the admin builder; "published" is what the public renders.
+// ============================================================================
+model SitePage {
+  id          String    @id @default(uuid(7))
+  slug        String    @unique
+  title       String
+  draft       Json
+  published   Json?
+  version     Int       @default(1)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedBy   String?
+}
+
+// ============================================================================
+// WhatsApp conversation engine (Phase 2). Sessions resume; messages are logged.
+// ============================================================================
+model ConversationSession {
+  id             String    @id @default(uuid(7))
+  channel        String    @default("whatsapp")
+  address        String // phone number (E.164)
+  participantId  String?
+  flow           String? // current flow key, e.g. add_property
+  step           String? // current step within the flow
+  data           Json? // answers collected so far
+  resumableUntil DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([channel, address])
+}
+
+model MessageLog {
+  id        String   @id @default(uuid(7))
+  channel   String   @default("whatsapp")
+  address   String
+  direction String // in | out
+  body      String
+  payload   Json?
+  at        DateTime @default(now())
+
+  @@index([address])
+}
+
+/// WhatsApp message templates (Meta requires pre-approval for business-initiated messages).
+model WhatsAppTemplate {
+  id              String   @id @default(uuid(7))
+  name            String   @unique // meta template name, snake_case
+  category        String   @default("UTILITY") // UTILITY | MARKETING | AUTHENTICATION
+  language        String   @default("en")
+  body            String // may contain {{1}}, {{2}} placeholders
+  status          String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// New-tenancy origination (GJ-05, ORIGINATION route). A draft tenancy passes every gate,
+/// then activates atomically. Gates fail closed: activation is refused until all are green.
+model TenancyOrigination {
+  id                    String    @id @default(uuid(7))
+  tenancyId             String    @unique
+  propertyId            String
+  landlordId            String
+  status                String    @default("DRAFT") // DRAFT | READY | ACTIVATED | CANCELLED
+  termsSet              Boolean   @default(true)
+  tenantAccepted        Boolean   @default(false)
+  cautionFeeSettled     Boolean   @default(false)
+  tenantAcceptTokenHash String?
+  tenantAcceptExpiresAt DateTime?
+  activatedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([landlordId])
+}
+
+/// Sealed documents (GJ-14): generated, hashed, signed, publicly verifiable and tamper-evident.
+model SealedDocument {
+  id          String    @id @default(uuid(7))
+  reference   String    @unique // public verify reference, KT-DOC-XXXX
+  type        String    @default("TENANCY_AGREEMENT") // TENANCY_AGREEMENT | NOTICE | OTHER
+  title       String
+  body        String
+  contentHash String? // sha256 of body, set on seal
+  status      String    @default("DRAFT") // DRAFT | SEALED | SIGNED | VOID
+  tenancyId   String?
+  createdBy   String?
+  sealedAt    DateTime?
+  signedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  signatures DocumentSignature[]
+}
+
+/// Scope of management (SOM-01, GJ-20). Which services Kiataker manages for a property, agreed
+/// by the landlord. An action checks its service is in scope (absent scope defaults to all-on).
+model ScopeOfManagement {
+  id             String    @id @default(uuid(7))
+  propertyId     String    @unique
+  landlordId     String
+  rentCollection Boolean   @default(true)
+  maintenance    Boolean   @default(true)
+  notices        Boolean   @default(true)
+  inspections    Boolean   @default(true)
+  renewals       Boolean   @default(true)
+  status         String    @default("AGREED") // DRAFT | AGREED
+  version        Int       @default(1)
+  agreedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Bulk / concierge intake (GJ-23, PROP-09/10). Staff capture many tenancies from documents
+/// or a spreadsheet; the landlord confirms the batch, then they are created in one go.
+model IntakeBatch {
+  id               String    @id @default(uuid(7))
+  landlordId       String
+  createdBy        String? // staff
+  status           String    @default("DRAFT") // DRAFT | AWAITING_LANDLORD | COMMITTED | REJECTED
+  rows             Json      @default("[]") // [{ addressRaw, buildingUse, tenantName, rentKobo, frequency, commencementDate, expiryDate }]
+  confirmTokenHash String?
+  confirmExpiresAt DateTime?
+  confirmedAt      DateTime?
+  committedCount   Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([landlordId])
+}
+
+/// Condition checks (GJ-08): a handover baseline the tenant confirms, and an exit check that
+/// compares against it. Tenants confirm or dispute only (BP-19).
+model ConditionCheck {
+  id                     String    @id @default(uuid(7))
+  tenancyId              String
+  propertyId             String
+  landlordId             String
+  kind                   String    @default("BASELINE") // BASELINE | EXIT
+  status                 String    @default("DRAFT") // DRAFT | AWAITING_TENANT | CONFIRMED | DISPUTED
+  items                  Json      @default("[]") // [{ area, condition, note, evidenceRef }]
+  tenantConfirmTokenHash String?
+  tenantConfirmExpiresAt DateTime?
+  tenantNote             String?
+  confirmedAt            DateTime?
+  createdBy              String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([tenancyId])
+  @@index([landlordId])
+}
+
+/// Tenancy close-out with the caution-fee outcome (GJ-13). Kiataker records; it holds nothing.
+model TenancyCloseout {
+  id             String    @id @default(uuid(7))
+  tenancyId      String    @unique
+  propertyId     String
+  landlordId     String
+  status         String    @default("OPEN") // OPEN | SETTLED
+  cautionFeeKobo BigInt    @default(0)
+  deductionsKobo BigInt    @default(0)
+  deductions     Json      @default("[]") // [{ reason, amountKobo }]
+  outcome        String? // REFUND | PARTIAL | FORFEIT | NO_DEPOSIT
+  refundKobo     BigInt    @default(0)
+  settledAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([landlordId])
+}
+
+/// A signature on a document, by e-signature on a secure link or by paper upload (GJ-06).
+model DocumentSignature {
+  id            String    @id @default(uuid(7))
+  documentId    String
+  signerName    String
+  signerRole    String // LANDLORD | TENANT | WITNESS
+  method        String    @default("ESIGN") // ESIGN | PAPER
+  status        String    @default("REQUESTED") // REQUESTED | SIGNED
+  tokenHash     String?
+  expiresAt     DateTime?
+  signatureHash String? // the document hash at the moment of signing
+  evidenceRef   String? // for a paper upload
+  signedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  document SealedDocument @relation(fields: [documentId], references: [id])
+
+  @@index([documentId])
+}
+
+/// Control change requiring CEO sign-off (GJ-18, BP-08, P0-08). A high-risk platform control is
+/// not toggled directly: a change is proposed, then a CEO Command Centre seat holder signs it off
+/// (and the proposer cannot sign off their own, a two-person rule). The control changes only on
+/// approval. Low and medium controls still apply immediately.
+model ControlChangeRequest {
+  id             String    @id @default(uuid(7))
+  controlKey     String
+  fromEnabled    Boolean
+  toEnabled      Boolean
+  risk           String // snapshot of the control's risk at request time
+  reason         String
+  status         String    @default("PENDING") // PENDING | APPLIED | REJECTED | CANCELLED
+  requestedBy    String
+  decidedBy      String?
+  decisionReason String?
+  decidedAt      DateTime?
+  appliedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([controlKey])
+}
+
+/// NDPA data-subject requests (GJ-19, NDPA 2023 ss.34-37). A person asks for a copy of the
+/// personal data Kiataker holds (ACCESS) or for it to be erased (ERASURE). Identity is proven
+/// on a secure link before anything is disclosed or erased. Erasure anonymises the person but
+/// keeps records Kiataker must retain under a legal basis (audit, financial, tenancy record).
+model DataSubjectRequest {
+  id              String    @id @default(uuid(7))
+  reference       String    @unique // public reference, KT-DSR-XXXX
+  kind            String    @default("ACCESS") // ACCESS | ERASURE
+  subjectId       String // the Participant the request is about
+  subjectName     String
+  status          String    @default("RECEIVED") // RECEIVED | FULFILLED | REFUSED
+  verifyTokenHash String?
+  verifyExpiresAt DateTime?
+  verifiedAt      DateTime?
+  package         Json? // the disclosed copy (ACCESS) or the erasure summary (ERASURE)
+  refusedReason   String?
+  raisedBy        String? // the subject, or staff acting on a request
+  fulfilledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([subjectId])
+}
+
+/// Proactive (business-initiated) WhatsApp notifications. Respect quiet hours and approval.
+model WhatsAppNotification {
+  id            String    @id @default(uuid(7))
+  participantId String
+  templateName  String
+  params        Json      @default("[]")
+  status        String    @default("QUEUED") // QUEUED | SENT | DEFERRED | SKIPPED
+  reason        String?
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status])
+}
+
+// ============================================================================
+// Rent cycle (Phase 1, RENT, GJ-11). Charges per period; payments settle direct.
+// ============================================================================
+model RentCharge {
+  id          String    @id @default(uuid(7))
+  tenancyId   String
+  periodStart DateTime
+  periodEnd   DateTime
+  dueDate     DateTime
+  amountKobo  BigInt
+  status      String    @default("DUE") // DUE | OVERDUE | PAID
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenancyId, periodStart])
+  @@index([tenancyId])
+  @@index([status, dueDate])
+}
+
+model Payment {
+  id               String    @id @default(uuid(7))
+  tenancyId        String
+  rentChargeId     String?
+  amountKobo       BigInt
+  provenance       String // off_platform | paystack
+  status           String    @default("SUCCESS") // PENDING | SUCCESS | FAILED (on-platform lifecycle)
+  feeKobo          BigInt    @default(0) // Kiataker's coordination fee (split, never custodied)
+  netKobo          BigInt    @default(0) // settles directly to the landlord (BP-07)
+  reference        String? // our checkout reference (unique for on-platform)
+  providerRef      String? // the PSP's transaction reference
+  authorizationUrl String? // the tenant's hosted checkout link
+  payerEmail       String?
+  evidenceRef      String?
+  recordedBy       String?
+  receivedAt       DateTime  @default(now())
+  paidAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([tenancyId])
+  @@index([reference])
+}
+
+// ============================================================================
+// Maintenance and Konnect (Phase 4, MNT/KON, GJ-09). Report → Quote → Work.
+// ============================================================================
+model MaintenanceIssue {
+  id          String   @id @default(uuid(7))
+  propertyId  String
+  tenancyId   String?
+  category    String
+  description String
+  urgency     String   @default("NORMAL")
+  status      String   @default("REPORTED") // REPORTED | QUOTING | ACCEPTED | IN_PROGRESS | COMPLETION_SUBMITTED | COMPLETED | CLOSED
+  reportedBy  String?
+  evidenceRef String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+}
+
+/// Konnect service providers (GJ-10). They apply, are admitted, then quote and deliver Work.
+model ServiceProvider {
+  id              String    @id @default(uuid(7))
+  name            String
+  services        String // free text: what they do
+  contactEmail    String?
+  contactPhone    String?
+  status          String    @default("APPLIED") // APPLIED | ADMITTED | REJECTED | SUSPENDED
+  accessTokenHash String? // the provider workspace link
+  admittedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model ServiceQuote {
+  id           String   @id @default(uuid(7))
+  issueId      String
+  providerId   String? // the self-service provider that submitted it (GJ-10), if any
+  providerName String
+  providerRef  String?
+  amountKobo   BigInt
+  scope        String
+  assumptions  String?
+  status       String   @default("SUBMITTED") // SUBMITTED | ACCEPTED | DECLINED
+  sealedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([issueId])
+}
+
+model Work {
+  id           String    @id @default(uuid(7))
+  issueId      String
+  quoteId      String
+  providerId   String? // the self-service provider delivering it (GJ-10), if any
+  providerName String
+  status       String    @default("IN_PROGRESS") // IN_PROGRESS | COMPLETION_SUBMITTED | COMPLETED
+  evidence     Json?
+  acceptedBy   String?
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([issueId])
+}
+
+// Uploaded media for the CMS (image library).
+model MediaAsset {
+  id         String   @id @default(uuid(7))
+  filename   String
+  url        String
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now())
+  createdBy  String?
+}

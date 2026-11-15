@@ -1,0 +1,44 @@
+{
+  "name": "kiataker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kiataker — landlord-first rental property management platform for Nigeria. One TypeScript monorepo: one API, one database, every surface calls the API.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "turbo run dev --parallel",
+    "dev:api": "turbo run dev --filter=@kiataker/api",
+    "dev:web": "turbo run dev --filter=@kiataker/web",
+    "build": "turbo run build",
+    "verify": "node scripts/verify.mjs",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:copy": "node packages/copy/lint.mjs",
+    "test": "turbo run test",
+    "test:int": "turbo run test:int",
+    "db:generate": "pnpm --filter @kiataker/db generate",
+    "db:migrate": "pnpm --filter @kiataker/db migrate",
+    "db:migrate:check": "pnpm --filter @kiataker/db migrate:check",
+    "db:seed": "pnpm --filter @kiataker/db seed",
+    "db:reset": "pnpm --filter @kiataker/db reset",
+    "smoke": "node scripts/smoke.mjs",
+    "load:test": "k6 run scripts/load-test.js",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium",
+    "package": "node scripts/package.mjs",
+    "preflight": "node scripts/preflight.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "1.49.1",
+    "@types/node": "22.10.2",
+    "axe-core": "^4.14.0",
+    "prettier": "3.4.2",
+    "turbo": "2.3.3",
+    "typescript": "5.7.2"
+  }
+}

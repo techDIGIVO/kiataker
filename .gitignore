@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Env & secrets (never committed; go-live is config, not code)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Prisma
+packages/db/prisma/*.db
+
+# Test & coverage
+coverage/
+test-results/
+playwright-report/
+verify-report.html
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Release artifacts
+*.zip
+release/
