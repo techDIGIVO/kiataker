@@ -9,6 +9,7 @@ import { TokenService } from "./auth/token.service.js";
 import { MetricsService } from "./observability/metrics.service.js";
 import { ErrorReporter } from "./observability/error-reporter.service.js";
 import { LabelService } from "./read/label.service.js";
+import { SchedulerService } from "./scheduler/scheduler.service.js";
 
 /** Shared platform services, available to every module (adapters at the edges, §41.8). */
 @Global()
@@ -24,6 +25,7 @@ import { LabelService } from "./read/label.service.js";
     MetricsService,
     ErrorReporter,
     LabelService,
+    SchedulerService,
   ],
   exports: [
     CryptoService,
@@ -36,6 +38,7 @@ import { LabelService } from "./read/label.service.js";
     MetricsService,
     ErrorReporter,
     LabelService,
+    SchedulerService,
   ],
 })
 export class CoreModule {}

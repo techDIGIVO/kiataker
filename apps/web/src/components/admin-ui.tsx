@@ -33,6 +33,7 @@ const NAV: { group: string; items: { key: string; label: string; href?: string }
     items: [
       { key: "integrations", label: "Integrations & keys", href: "/admin/ai" },
       { key: "whatsapp", label: "WhatsApp channel", href: "/admin/whatsapp" },
+      { key: "jobs", label: "Job queue", href: "/admin/jobs" },
       { key: "signoff", label: "CEO sign-off", href: "/admin/sign-off" },
       { key: "ndpa", label: "Data requests", href: "/admin/ndpa" },
       { key: "pages", label: "Landing page", href: "/admin/pages/home" },
@@ -229,6 +230,6 @@ export function statusTone(status: string): "ok" | "warn" | "muted" | "info" {
   const s = status.toUpperCase();
   if (["COMPLETED", "PAID", "TENANT_CONFIRMED", "CONFIRMED", "DISPATCHED", "RECONCILED", "ACTIVE", "APPROVED", "SENT", "FULFILLED"].includes(s)) return "ok";
   if (["OVERDUE", "ESCALATED", "TENANT_DISPUTED", "DISPUTED", "URGENT", "REJECTED", "SKIPPED", "REFUSED", "REFUNDED"].includes(s)) return "warn";
-  if (["IN_PROGRESS", "QUOTING", "COMPLETION_SUBMITTED", "INSTRUCTED", "SUBMITTED", "QUEUED", "DEFERRED", "AWAITING_TENANT", "RECEIVED", "PENDING", "APPLIED"].includes(s)) return "info";
+  if (["IN_PROGRESS", "QUOTING", "COMPLETION_SUBMITTED", "INSTRUCTED", "SUBMITTED", "QUEUED", "DEFERRED", "AWAITING_TENANT", "RECEIVED", "PENDING", "APPLIED", "RUNNING"].includes(s)) return "info";
   return "muted";
 }

@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { PrismaModule } from "./common/prisma/prisma.module.js";
 import { CoreModule } from "./common/core.module.js";
 import { ObservabilityModule } from "./common/observability/observability.module.js";
+import { SchedulerModule } from "./common/scheduler/scheduler.module.js";
 import { JwtAuthGuard } from "./common/auth/jwt-auth.guard.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
@@ -30,6 +31,7 @@ import { TemplatesModule } from "./modules/templates/templates.module.js";
     PrismaModule,
     CoreModule,
     ObservabilityModule,
+    SchedulerModule,
     HealthModule,
     AuthModule,
     TermsModule,

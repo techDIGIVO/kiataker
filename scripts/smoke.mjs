@@ -1043,6 +1043,14 @@ async function main() {
   const admAdvance = await call("POST", `/internal/renewals/${admRenTen2.json.id}/advance`, {}, staffToken);
   ok("staff advance the possession runway", admAdvance.json.stage === "NOTICE_SERVED");
 
+  // P0-05: durable job queue. Enqueue a job, process due jobs, see it reach DONE.
+  const job = await call("POST", "/internal/jobs", { kind: "noop", subjectRef: "smoke" }, staffToken);
+  ok("staff enqueue a durable job", !!job.json.id);
+  const proc = await call("POST", "/internal/jobs/process", {}, staffToken);
+  ok("processing runs the due jobs", typeof proc.json.processed === "number" && proc.json.processed >= 1);
+  const jobsBoard = await call("GET", "/internal/board/jobs", undefined, staffToken);
+  ok("the processed job is marked DONE on the queue board", jobsBoard.json.find((j) => j.id === job.json.id)?.state === "DONE");
+
   // The whole WhatsApp channel fails closed behind its control (BP-08). Re-enabled right after.
   await call("PUT", "/internal/controls/channel.whatsapp", { enabled: false, reason: "smoke" }, staffToken);
   const channelOff = await chat("2348090000001", { text: "hi" });

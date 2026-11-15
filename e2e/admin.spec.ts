@@ -88,6 +88,13 @@ test("the buildings board renders", async ({ page }) => {
   await expect(page.getByText(/holding both flats and shops is mixed-use/i)).toBeVisible();
 });
 
+test("the job queue board renders", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/jobs");
+  await expect(page.getByRole("heading", { name: "Job queue", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Process due now/i })).toBeVisible();
+});
+
 test("the CEO sign-off queue renders", async ({ page }) => {
   await signIn(page);
   await page.goto("/admin/sign-off");
