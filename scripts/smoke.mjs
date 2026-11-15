@@ -1043,6 +1043,15 @@ async function main() {
   const admAdvance = await call("POST", `/internal/renewals/${admRenTen2.json.id}/advance`, {}, staffToken);
   ok("staff advance the possession runway", admAdvance.json.stage === "NOTICE_SERVED");
 
+  // P4: Information outputs. A landlord rent statement for staff, the landlord API, and chat.
+  const stmt = await call("GET", `/internal/statements/${signup.json.participantId}`, undefined, staffToken);
+  ok("staff pull a landlord statement with totals", stmt.json.totals && typeof stmt.json.totals.chargedKobo === "string" && Array.isArray(stmt.json.tenancies));
+  ok("the statement sums charged across tenancies", BigInt(stmt.json.totals.chargedKobo) >= 0n && stmt.json.totals.tenancies >= 1);
+  const stmtMe = await call("GET", "/statements/me", undefined, token);
+  ok("a landlord gets their own statement", stmtMe.json.landlord && typeof stmtMe.json.totals.outstandingKobo === "string");
+  const stmtChat = await chat(waFrom, { replyId: "my_statement" });
+  ok("the statement is available over WhatsApp", chatText(stmtChat.messages).includes("Your statement"));
+
   // P2: support inbox. Staff see conversations, read a thread, and reply (logged + sent live).
   const inbox = await call("GET", "/internal/whatsapp/inbox", undefined, staffToken);
   ok("the support inbox lists conversations", Array.isArray(inbox.json) && inbox.json.some((c) => c.address === waFrom));

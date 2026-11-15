@@ -17,9 +17,10 @@ import { DocumentsModule } from "../documents/documents.module.js";
 import { ConditionModule } from "../condition/condition.module.js";
 import { ScopeModule } from "../scope/scope.module.js";
 import { NdpaModule } from "../ndpa/ndpa.module.js";
+import { InformationModule } from "../information/information.module.js";
 
 @Module({
-  imports: [PropertyModule, TenancyModule, ActionModule, NoticesModule, MaintenanceModule, PaymentsModule, DocumentsModule, ConditionModule, ScopeModule, NdpaModule],
+  imports: [PropertyModule, TenancyModule, ActionModule, NoticesModule, MaintenanceModule, PaymentsModule, DocumentsModule, ConditionModule, ScopeModule, NdpaModule, InformationModule],
   controllers: [WhatsAppController, AiAdminController, ChannelAdminController],
   providers: [ConversationService, MetaService, ChannelService, AiService, IntegrationsService],
 })

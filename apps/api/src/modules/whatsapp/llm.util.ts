@@ -29,6 +29,7 @@ export const INTENT_GUIDE: { intent: string; when: string }[] = [
   { intent: "send_notice", when: "send, issue or serve a legal notice (rent review, quit, possession)" },
   { intent: "my_actions", when: "what needs my decision / attention / action right now" },
   { intent: "my_properties", when: "list my properties / portfolio" },
+  { intent: "my_statement", when: "a rent statement, summary of money collected/owed, earnings or account balance" },
   { intent: "greeting", when: "a greeting or conversation opener with no task" },
   { intent: "help", when: "asking for help or what the assistant can do" },
   { intent: "human", when: "wants to talk to a person / human / agent / support" },

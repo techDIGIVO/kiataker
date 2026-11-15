@@ -88,6 +88,13 @@ test("the buildings board renders", async ({ page }) => {
   await expect(page.getByText(/holding both flats and shops is mixed-use/i)).toBeVisible();
 });
 
+test("the statements board renders", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/statements");
+  await expect(page.getByRole("heading", { name: "Statements", exact: true })).toBeVisible();
+  await expect(page.getByText(/Landlord rent statements/i)).toBeVisible();
+});
+
 test("the support inbox renders", async ({ page }) => {
   await signIn(page);
   await page.goto("/admin/inbox");

@@ -25,6 +25,7 @@ export type Intent =
   | "collect_rent"
   | "my_actions"
   | "my_properties"
+  | "my_statement"
   | "help"
   | "human"
   | "affirm"
@@ -160,6 +161,7 @@ export class AiService {
     if (t === "report a problem" || /\b(report|log|raise)\b.*\b(issue|problem|fault|repair|leak)\b/.test(t) || /\b(leak|leaking|broken|faulty|not working|plumbing|electrical)\b/.test(t)) return "report_issue";
     if (t === "collect rent" || /\b(collect|request|charge)\b.*\b(rent|payment)\b/.test(t) || /\bpay (my )?rent\b/.test(t) || /\bpayment link\b/.test(t)) return "collect_rent";
     if (/\b(decision|action|act now|what needs|to do|todo)\b/.test(t) || t === "what needs my decision") return "my_actions";
+    if (t === "my statement" || /\b(statement|summary|how much.*(collected|paid|owed)|account balance|earnings|income)\b/.test(t)) return "my_statement";
     if (/\b(my )?propert(y|ies)\b/.test(t) || t === "my properties") return "my_properties";
     if (/\b(help|support)\b/.test(t)) return "help";
     if (/\b(agent|human|person|talk to)\b/.test(t)) return "human";

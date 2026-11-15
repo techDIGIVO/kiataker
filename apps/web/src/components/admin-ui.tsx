@@ -19,6 +19,7 @@ const NAV: { group: string; items: { key: string; label: string; href?: string }
       { key: "providers", label: "Providers", href: "/admin/providers" },
       { key: "rent", label: "Rent & arrears", href: "/admin/rent" },
       { key: "payments", label: "Payments", href: "/admin/payments" },
+      { key: "statements", label: "Statements", href: "/admin/statements" },
       { key: "closeouts", label: "Close-outs", href: "/admin/closeouts" },
       { key: "notices", label: "Notices", href: "/admin/notices" },
       { key: "renewals", label: "Renewals", href: "/admin/renewals" },

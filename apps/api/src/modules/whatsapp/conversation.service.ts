@@ -11,6 +11,7 @@ import { RenewalService } from "../tenancy/renewal.service.js";
 import { ConditionService } from "../condition/condition.service.js";
 import { ScopeService } from "../scope/scope.service.js";
 import { NdpaService } from "../ndpa/ndpa.service.js";
+import { StatementService } from "../information/statement.service.js";
 import { ActionService } from "../action/action.service.js";
 import { ControlsService } from "../../common/controls/controls.service.js";
 import { NoticesService } from "../notices/notices.service.js";
@@ -50,6 +51,7 @@ export class ConversationService {
     private readonly condition: ConditionService,
     private readonly scope: ScopeService,
     private readonly ndpa: NdpaService,
+    private readonly statements: StatementService,
     private readonly actions: ActionService,
     private readonly controls: ControlsService,
     private readonly notices: NoticesService,
@@ -132,6 +134,9 @@ export class ConversationService {
         return this.finish(address, [...messages, ...(await this.startMyData(address, participant.id))]);
       case "buildings":
         return this.finish(address, [...messages, ...(await this.startBuildings(address, participant.id))]);
+      case "my_statement":
+        messages.push(...(await this.showStatement(participant.id)));
+        break;
       case "report_issue":
         return this.finish(address, [...messages, ...(await this.startReportIssue(address, participant.id))]);
       case "my_issues":
@@ -971,6 +976,22 @@ export class ConversationService {
     return [{ type: "text", text: `Your properties:\n\n${lines}` }];
   }
 
+  private async showStatement(participantId: string): Promise<OutMsg[]> {
+    const s = await this.statements.forLandlord(participantId);
+    const naira = (k: string) => `NGN ${(BigInt(k) / 100n).toLocaleString("en-NG")}`;
+    const t = s.totals;
+    const lines = [
+      `Your statement (${new Date(s.generatedAt).toLocaleDateString()})`,
+      "",
+      `Properties: ${t.properties}   Tenancies: ${t.tenancies}`,
+      `Charged: ${naira(t.chargedKobo)}`,
+      `Collected: ${naira(t.collectedKobo)}`,
+      `Settled to you: ${naira(t.netToLandlordKobo)}`,
+      `Outstanding: ${naira(t.outstandingKobo)}`,
+    ];
+    return [{ type: "text", text: lines.join("\n") }, this.menu()];
+  }
+
   private menu(): OutMsg {
     return {
       type: "list",
@@ -993,6 +1014,7 @@ export class ConversationService {
         { id: "my_issues", title: "My issues" },
         { id: "send_notice", title: "Send a notice" },
         { id: "my_properties", title: "My properties" },
+        { id: "my_statement", title: "My statement" },
         { id: "scope", title: "Scope of management" },
         { id: "my_data", title: "My data rights" },
         { id: "human", title: "Talk to a person" },
