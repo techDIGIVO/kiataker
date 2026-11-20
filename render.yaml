@@ -1,0 +1,87 @@
+# Render Blueprint for the Kiataker API (https://render.com/docs/blueprint-spec).
+# The web app is on Vercel and the database is on Neon, so only the API is defined here.
+#
+# Set up: Render dashboard -> New -> Blueprint -> pick this repo. Render reads this file and
+# asks for every value marked `sync: false`. Full steps: DEPLOYMENT.md.
+#
+# FREE PLAN LIMITS (fine for a pilot, not for real customers):
+#   - Sleeps after ~15 min without traffic; the next request takes ~30-60 s to wake it.
+#     Background jobs (rent scan, scheduler) only run while it is awake.
+#   - No persistent disk: CMS image uploads are lost whenever it restarts.
+#   - No pre-deploy step, so database migrations run at the end of the build instead.
+# To go live for real: see "UPGRADING" at the bottom of this file.
+
+services:
+  - type: web
+    name: kiataker-api
+    runtime: node
+    plan: free
+    region: frankfurt # same region as the Neon database (AWS eu-central-1)
+    numInstances: 1 # the job scheduler and rate limiter assume a single instance
+    healthCheckPath: /v1/health
+    autoDeploy: true # redeploy on every push to the connected branch
+
+    # Dev dependencies (TypeScript, Prisma CLI) are needed to build, so install them even
+    # though NODE_ENV=production is set for the running app.
+    buildCommand: >-
+      corepack enable &&
+      NODE_ENV=development pnpm install --frozen-lockfile &&
+      pnpm turbo run build --filter=@kiataker/api &&
+      pnpm --filter @kiataker/db migrate:deploy
+    startCommand: pnpm --filter @kiataker/api start
+
+    envVars:
+      # ---- Runtime ----
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: TZ
+        value: Africa/Lagos
+      - key: PORT # the port Render routes traffic to...
+        value: "4000"
+      - key: API_PORT # ...and the port the API listens on. Keep them equal.
+        value: "4000"
+
+      # ---- Secrets and URLs (Render asks for these on first setup) ----
+      - key: DATABASE_URL # Neon DIRECT connection string (hostname without "-pooler")
+        sync: false
+      - key: JWT_ACCESS_SECRET # 32+ random chars. Same value used for seed:prod. NEVER change it.
+        sync: false
+      - key: JWT_REFRESH_SECRET # 32+ random chars, different from the access secret
+        sync: false
+      - key: API_BASE_URL # this service's public URL, e.g. https://kiataker-api.onrender.com
+        sync: false
+      - key: WEB_BASE_URL # the Vercel site URL, exactly (the only origin CORS allows)
+        sync: false
+
+      # ---- Integrations: real adapters switch on once their keys are in /admin/ai ----
+      - key: WHATSAPP_ADAPTER
+        value: fake # -> meta once the Meta Cloud API keys are entered
+      - key: PAYMENTS_ADAPTER
+        value: fake # -> paystack once Paystack keys are entered
+      - key: AI_API_KEY # Gemini key (provider is detected from the "AIza" prefix)
+        sync: false
+      - key: AI_MODEL
+        value: gemini-3.5-flash-lite
+
+      # ---- Hardening ----
+      - key: RATE_LIMIT_MAX
+        value: "600"
+      - key: RATE_LIMIT_AUTH_MAX
+        value: "20"
+      # DEV_TOOLS and TRUST_PROXY are deliberately unset: production defaults are correct.
+      # Optional: add SENTRY_DSN in the dashboard to forward errors to Sentry.
+
+# UPGRADING (before real customers rely on it):
+#   1. plan: starter (or higher), so it never sleeps and can have a disk.
+#   2. Add a disk and point uploads at it:
+#        disk:
+#          name: uploads
+#          mountPath: /var/data
+#          sizeGB: 1
+#      plus an env var  UPLOADS_DIR=/var/data/uploads
+#   3. Move migrations out of the build:
+#        preDeployCommand: pnpm --filter @kiataker/db migrate:deploy
+#      and remove "&& pnpm --filter @kiataker/db migrate:deploy" from buildCommand.
+#   4. The Neon database also needs a paid plan then, because an always-on API keeps it awake.

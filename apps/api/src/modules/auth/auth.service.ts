@@ -24,6 +24,11 @@ import { ErrorCode } from "@kiataker/contracts";
 import { env } from "../../common/config/env.js";
 import { HttpStatus } from "@nestjs/common";
 
+/** Wrong guesses allowed per one-time code before it is burned. */
+const MAX_CODE_ATTEMPTS = 5;
+/** One-time codes that can be issued to one contact within an hour. */
+const MAX_CODES_PER_HOUR = 5;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,8 +39,12 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  private isFake() {
-    return env.WHATSAPP_ADAPTER === "fake";
+  /**
+   * Echo the one-time code in the response only for the local simulator. Doing so on a public
+   * deployment would let anyone sign in as any phone number or email.
+   */
+  private exposeDevCode() {
+    return env.WHATSAPP_ADAPTER === "fake" && env.DEV_TOOLS;
   }
 
   /** ACC: say hello, create an account, verify contact details (GJ-01). */
@@ -82,22 +91,41 @@ export class AuthService {
     });
 
     // Fake adapter: the local WhatsApp/email simulator delivers the code (§44.1).
-    return { participantId, ...(this.isFake() ? { devCode: code } : {}) };
+    return { participantId, ...(this.exposeDevCode() ? { devCode: code } : {}) };
   }
 
   async sendCode(body: unknown): Promise<{ sent: true; devCode?: string }> {
     const input = validate(SendCodeSchema, body);
     const valueHash = this.crypto.valueHash(input.target);
-    const code = this.crypto.randomCode();
-    await this.prisma.contactVerificationCode.create({
-      data: {
-        targetHash: valueHash,
-        codeHash: this.crypto.valueHash(code),
-        channel: input.channel,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
+    // Cap codes per contact per hour: with MAX_CODE_ATTEMPTS guesses each, this bounds how many
+    // guesses anyone gets at one contact's code, regardless of how many IPs they use.
+    const recent = await this.prisma.contactVerificationCode.count({
+      where: { targetHash: valueHash, createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
     });
-    return { sent: true, ...(this.isFake() ? { devCode: code } : {}) };
+    if (recent >= MAX_CODES_PER_HOUR) {
+      throw new DomainError(
+        ErrorCode.CONTACT_VERIFICATION_REQUIRED,
+        "Too many codes requested. Please wait an hour and try again.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const code = this.crypto.randomCode();
+    await this.prisma.$transaction([
+      // Only the newest code is valid.
+      this.prisma.contactVerificationCode.updateMany({
+        where: { targetHash: valueHash, consumedAt: null, supersededAt: null },
+        data: { supersededAt: new Date() },
+      }),
+      this.prisma.contactVerificationCode.create({
+        data: {
+          targetHash: valueHash,
+          codeHash: this.crypto.valueHash(code),
+          channel: input.channel,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      }),
+    ]);
+    return { sent: true, ...(this.exposeDevCode() ? { devCode: code } : {}) };
   }
 
   async verifyCode(body: unknown): Promise<TokenPair> {
@@ -114,15 +142,24 @@ export class AuthService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    if (code.attempts >= MAX_CODE_ATTEMPTS) {
+      throw new DomainError(
+        ErrorCode.CONTACT_VERIFICATION_REQUIRED,
+        "Too many wrong attempts. Request a new code.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     if (code.codeHash !== this.crypto.valueHash(input.code)) {
+      const attempts = code.attempts + 1;
       await this.prisma.contactVerificationCode.update({
         where: { id: code.id },
-        data: { attempts: { increment: 1 } },
+        // Burn the code on the last allowed wrong guess.
+        data: { attempts, ...(attempts >= MAX_CODE_ATTEMPTS ? { supersededAt: new Date() } : {}) },
       });
       throw new DomainError(
         ErrorCode.CONTACT_VERIFICATION_REQUIRED,
-        "That code is not correct",
-        HttpStatus.BAD_REQUEST,
+        attempts >= MAX_CODE_ATTEMPTS ? "Too many wrong attempts. Request a new code." : "That code is not correct",
+        attempts >= MAX_CODE_ATTEMPTS ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.BAD_REQUEST,
       );
     }
 

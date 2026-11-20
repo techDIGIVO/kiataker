@@ -42,7 +42,7 @@ export class IntegrationsService {
   /** A full picture of what is configured and currently in place. */
   async status() {
     const aiCfg = await this.ai.getConfig();
-    const aiKeys = await this.get("ai.keys");
+    const aiKey = await this.ai.resolveKey(aiCfg.provider);
     const wa = await this.get("whatsapp.credentials");
     const ps = await this.get("payments.credentials");
 
@@ -52,10 +52,15 @@ export class IntegrationsService {
         model: aiCfg.model,
         temperature: aiCfg.temperature,
         systemStyle: aiCfg.systemStyle,
-        keySet: aiCfg.provider === "fake" ? true : Boolean(aiKeys[aiCfg.provider]),
-        keyHint: mask(aiKeys[aiCfg.provider]),
-        working: aiCfg.provider === "fake" || Boolean(aiKeys[aiCfg.provider]),
-        note: aiCfg.provider === "fake" ? "Running on the local deterministic engine (no LLM key needed)." : "Hosted model; needs an API key.",
+        keySet: aiCfg.provider === "fake" ? true : Boolean(aiKey),
+        keyHint: mask(aiKey?.key),
+        working: aiCfg.provider === "fake" || Boolean(aiKey),
+        note:
+          aiCfg.provider === "fake"
+            ? "Running on the local deterministic engine (no LLM key needed)."
+            : aiKey?.source === "env"
+              ? "Hosted model; using the API key from the server environment (AI_API_KEY). A key saved here overrides it."
+              : "Hosted model; needs an API key.",
       },
       whatsapp: {
         mode: env.WHATSAPP_ADAPTER,

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { scryptSync, randomBytes, timingSafeEqual, createHash, createCipheriv, createDecipheriv } from "node:crypto";
+import { scryptSync, randomBytes, randomInt, timingSafeEqual, createHash, createCipheriv, createDecipheriv } from "node:crypto";
 
 /**
  * Crypto helpers (§34, §28). Phone numbers and emails are stored encrypted with a
@@ -45,8 +45,8 @@ export class CryptoService {
     return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString("utf8");
   }
 
+  /** One-time verification code from a cryptographically secure source. */
   randomCode(digits = 6): string {
-    const n = Math.floor(Math.random() * 10 ** digits);
-    return n.toString().padStart(digits, "0");
+    return randomInt(0, 10 ** digits).toString().padStart(digits, "0");
   }
 }

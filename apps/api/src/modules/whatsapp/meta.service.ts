@@ -103,11 +103,18 @@ export class MetaService {
     for (const m of messages) {
       const payload = this.toCloudPayload(to, m);
       try {
-        await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+        const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
           method: "POST",
           headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
           body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10_000),
         });
+        if (!res.ok) {
+          // Meta returns { error: { code, message } }: an expired token, an unapproved template,
+          // or a closed 24-hour window all land here. Log it; never the recipient or the body.
+          const detail = (await res.json().catch(() => null)) as { error?: { code?: number; message?: string } } | null;
+          this.logger.error(`Meta send rejected: HTTP ${res.status} code=${detail?.error?.code ?? "?"} ${detail?.error?.message ?? ""}`.trim());
+        }
       } catch (e) {
         this.logger.error(`Meta send failed: ${(e as Error).message}`);
       }

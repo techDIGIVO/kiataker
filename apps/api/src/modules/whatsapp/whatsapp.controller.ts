@@ -1,15 +1,17 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { RawBodyRequest } from "@nestjs/common";
 import type { Request } from "express";
 import { ConversationService } from "./conversation.service.js";
 import { MetaService } from "./meta.service.js";
 import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { Public } from "../../common/auth/public.decorator.js";
+import { DevToolsGuard } from "../../common/auth/dev-tools.guard.js";
 
 /**
- * WhatsApp surface. /whatsapp/inbound is the local simulator entry (the browser chat window
- * that behaves like the Meta Cloud API, PRD §44.1). The production webhook with signature
- * verification is added when the Meta adapter is switched on.
+ * WhatsApp surface. /whatsapp/inbound and /whatsapp/thread are the local simulator (the browser
+ * chat window that behaves like the Meta Cloud API, PRD §44.1). They trust the caller's claimed
+ * phone number, so they exist only when DEV_TOOLS is on. Real traffic arrives at /whatsapp/webhook,
+ * which verifies Meta's signature.
  */
 @Public()
 @Controller("whatsapp")
@@ -20,6 +22,7 @@ export class WhatsAppController {
     private readonly prisma: PrismaService,
   ) {}
 
+  @UseGuards(DevToolsGuard)
   @Post("inbound")
   inbound(@Body() body: { from: string; text?: string; replyId?: string }) {
     return this.conversation.handle(body.from, { text: body.text, replyId: body.replyId });
@@ -42,6 +45,7 @@ export class WhatsAppController {
     return this.meta.handleWebhook(body);
   }
 
+  @UseGuards(DevToolsGuard)
   @Get("thread/:address")
   async thread(@Param("address") address: string) {
     const msgs = await this.prisma.messageLog.findMany({

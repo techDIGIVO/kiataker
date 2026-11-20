@@ -99,7 +99,9 @@ export async function callProvider(
     } else if (provider === "google") {
       url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
       headers = { "content-type": "application/json" };
-      body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: userMessage }] }], generationConfig: { maxOutputTokens: 16, temperature } };
+      // Current Gemini models think by default, and thinking tokens count against maxOutputTokens.
+      // A 16-token cap would leave the reply empty, so allow room for thinking plus the one-word intent.
+      body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: userMessage }] }], generationConfig: { maxOutputTokens: 1024, temperature } };
     } else {
       throw new Error(`Unsupported provider: ${provider}`);
     }

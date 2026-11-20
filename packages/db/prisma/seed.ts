@@ -8,9 +8,13 @@
  * Plus the five Command Centres, platform controls, routing rules and terms versions.
  *
  * Idempotent: safe to run repeatedly.
+ *
+ * DEV AND STAGING ONLY. Staff get a published password and demo landlords are created.
+ * Production uses seed-prod.ts (reference data plus one super-admin from env).
  */
 import { PrismaClient } from "@prisma/client";
 import { scryptSync, randomBytes, createHash } from "node:crypto";
+import { seedReferenceData, CENTRES } from "./reference-data";
 
 const prisma = new PrismaClient();
 
@@ -27,41 +31,18 @@ const DEV_STAFF_PASSWORD = "kiataker-dev";
 async function main() {
   console.log("Seeding Kiataker personas...");
 
-  // ---- Organisation: KIA TAKER LTD (one company at launch) ----
-  const org = await prisma.organisation.upsert({
-    where: { id: "00000000-0000-7000-8000-000000000001" },
-    update: {},
-    create: {
-      id: "00000000-0000-7000-8000-000000000001",
-      legalName: "KIA TAKER LTD",
-      kind: "PLATFORM_OPERATOR",
-      active: true,
-      createdBy: "seed",
-    },
-  });
+  // ---- Reference data shared with production (organisation, centres, controls, routes, terms) ----
+  const { org, centres } = await seedReferenceData(prisma);
 
-  // ---- Five Command Centres with one staff seat each ----
-  const centres = [
-    { key: "ceo", name: "CEO Command Centre", role: "ceo" },
-    { key: "operations", name: "Operations Command Centre", role: "head_of_operations" },
-    { key: "product", name: "Product Management Command Centre", role: "product_officer" },
-    { key: "legal", name: "Legal and Compliance Command Centre", role: "legal_officer" },
-    { key: "accounts", name: "Accounts Command Centre", role: "accounts_executive" },
-  ];
-
-  for (const c of centres) {
-    const centre = await prisma.commandCentre.upsert({
-      where: { key: c.key },
-      update: { name: c.name },
-      create: { key: c.key, name: c.name, organisationId: org.id },
-    });
-
+  // ---- One demo staff member per Command Centre (dev/staging only: known password) ----
+  for (const [i, c] of CENTRES.entries()) {
+    const { seat } = centres.get(c.key)!;
     const staffEmail = `${c.key}@kiataker.ng`;
     const staff = await prisma.participant.upsert({
-      where: { id: `00000000-0000-7000-8001-0000000000${centres.indexOf(c) + 10}` },
+      where: { id: `00000000-0000-7000-8001-0000000000${i + 10}` },
       update: {},
       create: {
-        id: `00000000-0000-7000-8001-0000000000${centres.indexOf(c) + 10}`,
+        id: `00000000-0000-7000-8001-0000000000${i + 10}`,
         displayName: `${c.name} Staff`,
         kind: "STAFF",
         status: "ACTIVE",
@@ -82,68 +63,8 @@ async function main() {
         primary: true,
       },
     });
-    const seat = await prisma.seat.findFirst({ where: { commandCentreId: centre.id, role: c.role } });
-    const seatRow =
-      seat ?? (await prisma.seat.create({ data: { commandCentreId: centre.id, role: c.role } }));
-    const existingAssign = await prisma.seatAssignment.findFirst({
-      where: { seatId: seatRow.id, participantId: staff.id },
-    });
-    if (!existingAssign)
-      await prisma.seatAssignment.create({ data: { seatId: seatRow.id, participantId: staff.id } });
-  }
-
-  // ---- Platform controls (controls first, default off in production; BP-08, §54) ----
-  const controls: { key: string; risk: "LOW" | "MEDIUM" | "HIGH"; enabled: boolean; parentKey?: string }[] = [
-    { key: "payments.live", risk: "HIGH", enabled: false },
-    { key: "channel.whatsapp", risk: "MEDIUM", enabled: true },
-    { key: "channel.whatsapp.arrears", risk: "HIGH", enabled: false, parentKey: "channel.whatsapp" },
-    { key: "public.property_search", risk: "LOW", enabled: false },
-    { key: "homepage.search_window", risk: "LOW", enabled: false },
-    { key: "store_badges", risk: "LOW", enabled: false },
-    { key: "mobile_app", risk: "LOW", enabled: false },
-    { key: "compliance.ndpa", risk: "MEDIUM", enabled: true },
-  ];
-  for (const ctrl of controls) {
-    await prisma.platformControl.upsert({
-      where: { key: ctrl.key },
-      update: { risk: ctrl.risk },
-      create: { key: ctrl.key, risk: ctrl.risk, enabled: ctrl.enabled, parentKey: ctrl.parentKey, environment: "all" },
-    });
-  }
-
-  // ---- Action routing rules (§9, ACT-07) ----
-  const routes: { eventType: string; decision: string; priority: "CRITICAL" | "URGENT" | "OVERDUE" | "IMPORTANT" | "NORMAL" }[] = [
-    { eventType: "tenancy.confirmed", decision: "know", priority: "NORMAL" },
-    { eventType: "tenancy.disputed", decision: "decide", priority: "URGENT" },
-    { eventType: "rent.period_overdue", decision: "decide", priority: "OVERDUE" },
-    { eventType: "notice.delivery_failed", decision: "decide", priority: "URGENT" },
-    { eventType: "renewal.window_open", decision: "decide", priority: "IMPORTANT" },
-  ];
-  for (const r of routes) {
-    await prisma.actionRoutingRule.upsert({
-      where: { eventType: r.eventType },
-      update: { decision: r.decision, priority: r.priority },
-      create: r,
-    });
-  }
-
-  // ---- Terms versions (Terms of Use, Mandate, Privacy Notice) ----
-  for (const kind of ["TERMS_OF_USE", "MANDATE", "PRIVACY_NOTICE"] as const) {
-    const doc = await prisma.termsDocument.upsert({
-      where: { id: `00000000-0000-7000-8002-0000000000${kind.length}` },
-      update: {},
-      create: { id: `00000000-0000-7000-8002-0000000000${kind.length}`, kind, organisationId: org.id },
-    });
-    const existing = await prisma.termsVersion.findFirst({ where: { termsDocumentId: doc.id, version: 1 } });
-    if (!existing)
-      await prisma.termsVersion.create({
-        data: {
-          termsDocumentId: doc.id,
-          version: 1,
-          contentHash: sha256(`${kind}-v1`),
-          effectiveFrom: new Date("2026-01-01"),
-        },
-      });
+    const existingAssign = await prisma.seatAssignment.findFirst({ where: { seatId: seat.id, participantId: staff.id } });
+    if (!existingAssign) await prisma.seatAssignment.create({ data: { seatId: seat.id, participantId: staff.id } });
   }
 
   // ---- Day 0 landlord (no property yet) ----

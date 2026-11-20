@@ -37,7 +37,8 @@ export const AI_PROVIDERS = [
   { id: "fake", label: "Local (deterministic, no LLM)", models: ["rules"] },
   { id: "anthropic", label: "Anthropic Claude", models: ["claude-opus-4-8", "claude-sonnet-5-5", "claude-haiku-5-5"] },
   { id: "openai", label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini"] },
-  { id: "google", label: "Google Gemini", models: ["gemini-1.5-pro", "gemini-1.5-flash"] },
+  // Gemini 1.5 is retired. Flash-Lite first: cheapest and fastest, and classification is a small task.
+  { id: "google", label: "Google Gemini", models: ["gemini-3.5-flash-lite", "gemini-3.6-flash"] },
 ] as const;
 
 export interface AiConfig {
@@ -47,9 +48,18 @@ export interface AiConfig {
   systemStyle: string;
 }
 
+/** Provider when nothing is saved in /admin/ai: the env's AI provider, else Anthropic if hosted, else the local rules. */
+const DEFAULT_PROVIDER: string = env.AI_PROVIDER ?? (env.AI_ADAPTER === "hosted" ? "anthropic" : "fake");
+
+function defaultModel(provider: string): string {
+  if (env.AI_MODEL) return env.AI_MODEL;
+  if (provider === "anthropic") return "claude-sonnet-5-5";
+  return AI_PROVIDERS.find((p) => p.id === provider)?.models[0] ?? "rules";
+}
+
 const DEFAULT_CONFIG: AiConfig = {
-  provider: env.AI_ADAPTER === "hosted" ? "anthropic" : "fake",
-  model: "claude-sonnet-5-5",
+  provider: DEFAULT_PROVIDER,
+  model: defaultModel(DEFAULT_PROVIDER),
   temperature: 0.3,
   systemStyle: "Warm, clear and human. Conversational, never robotic. Understands and routes; never decides for the landlord.",
 };
@@ -79,10 +89,20 @@ export class AiService {
     private readonly audit: AuditService,
   ) {}
 
-  /** The API key for a provider, from the stored integration keys (never returned to clients). */
-  private async getKey(provider: string): Promise<string | undefined> {
+  /**
+   * The API key for a provider and where it came from (never returned to clients). A key saved in
+   * /admin/ai wins; otherwise AI_API_KEY from the environment, if it belongs to this provider.
+   */
+  async resolveKey(provider: string): Promise<{ key: string; source: "admin" | "env" } | undefined> {
     const row = await this.prisma.setting.findUnique({ where: { key: "ai.keys" } });
-    return (row?.value as Record<string, string> | undefined)?.[provider];
+    const saved = (row?.value as Record<string, string> | undefined)?.[provider];
+    if (saved) return { key: saved, source: "admin" };
+    if (env.AI_API_KEY && env.AI_PROVIDER === provider) return { key: env.AI_API_KEY, source: "env" };
+    return undefined;
+  }
+
+  private async getKey(provider: string): Promise<string | undefined> {
+    return (await this.resolveKey(provider))?.key;
   }
 
   /**

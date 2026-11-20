@@ -23,6 +23,11 @@ async function bootstrap() {
   const isProduction = env.NODE_ENV === "production";
   // Do not advertise the server stack (§34).
   app.getHttpAdapter().getInstance().disable("x-powered-by");
+  // Behind a load balancer req.ip is the proxy unless Express trusts it; rate limits are per IP.
+  app.set("trust proxy", env.TRUST_PROXY);
+  if (isProduction && env.DEV_TOOLS) {
+    Logger.warn("DEV_TOOLS is on in production: simulator and test-payment routes are public. Never use this for a public deployment.", "Bootstrap");
+  }
   // Security headers, then observability (request id + metrics), then rate limiting (Phase 5).
   const metrics = app.get(MetricsService);
   app.use(securityHeaders(isProduction));

@@ -5,6 +5,7 @@ import { PaymentsService } from "./payments.service.js";
 import { StaffGuard } from "../admin/staff.guard.js";
 import { Public } from "../../common/auth/public.decorator.js";
 import { CurrentUser, type RequestUser } from "../../common/auth/current-user.decorator.js";
+import { DevToolsGuard } from "../../common/auth/dev-tools.guard.js";
 
 /** Landlord surface: raise a checkout for a tenant to pay (GJ-12). */
 @Controller("payments")
@@ -37,6 +38,7 @@ export class PaymentsPublicController {
   }
 
   @Public()
+  @UseGuards(DevToolsGuard)
   @Post(":reference/dev-complete")
   devComplete(@Param("reference") reference: string) {
     return this.payments.devComplete(reference);
@@ -64,6 +66,7 @@ export class PaymentsAdminController {
     return this.payments.refund(user.sub, reference);
   }
 
+  @UseGuards(DevToolsGuard)
   @Post("payments/:reference/dev-complete")
   devComplete(@Param("reference") reference: string) {
     return this.payments.devComplete(reference);

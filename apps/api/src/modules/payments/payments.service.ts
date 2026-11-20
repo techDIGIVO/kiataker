@@ -186,7 +186,7 @@ export class PaymentsService {
   }
 
   async devComplete(reference: string) {
-    if (this.psp.mode() !== "fake") throw new Forbidden("Dev-complete is only available in test mode");
+    if (this.psp.mode() !== "fake" || !env.DEV_TOOLS) throw new Forbidden("Dev-complete is only available in test mode");
     const payment = await this.prisma.payment.findFirst({ where: { reference } });
     if (!payment) throw new NotFound("Payment not found");
     return this.applySuccess(reference, `fake_${reference}`, payment.amountKobo);
