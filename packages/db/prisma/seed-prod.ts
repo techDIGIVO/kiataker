@@ -13,43 +13,23 @@
  * is never reset by re-running). Remove the BOOTSTRAP_ADMIN_* values from the host afterwards.
  */
 import { PrismaClient } from "@prisma/client";
-import { scryptSync, randomBytes, createHash, createCipheriv } from "node:crypto";
 import { seedReferenceData } from "./reference-data";
+import { productionEncryptionSecret, makeEncrypt, valueHash, hashPassword } from "./seed-utils";
 
 function fail(message: string): never {
   console.error(`✗ seed:prod: ${message}`);
   process.exit(1);
 }
 
-const jwtSecret = process.env.JWT_ACCESS_SECRET ?? "";
 const email = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim();
 const password = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "";
 const displayName = (process.env.BOOTSTRAP_ADMIN_NAME ?? "Administrator").trim();
 
 // Personal data is encrypted with a key derived from JWT_ACCESS_SECRET (mirrors the API's
 // CryptoService). It must be the production value, or the API cannot read what is written here.
-if (jwtSecret.startsWith("dev-") || jwtSecret.length < 32) {
-  fail("JWT_ACCESS_SECRET must be the API's production value (32+ characters).");
-}
+const encrypt = makeEncrypt(productionEncryptionSecret(fail));
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("BOOTSTRAP_ADMIN_EMAIL must be a valid email address.");
 if (password.length < 12) fail("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters.");
-
-const encKey = scryptSync(jwtSecret, "kiataker-enc", 32);
-
-/** Same format as CryptoService.encrypt: iv:tag:ciphertext (hex, AES-256-GCM). */
-function encrypt(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encKey, iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return `${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${enc.toString("hex")}`;
-}
-/** Same as CryptoService.valueHash. */
-const valueHash = (v: string) => createHash("sha256").update(v.trim().toLowerCase()).digest("hex");
-/** Same as CryptoService.hashPassword. */
-function hashPassword(pw: string): string {
-  const salt = randomBytes(16);
-  return `scrypt:${salt.toString("hex")}:${scryptSync(pw, salt, 64).toString("hex")}`;
-}
 
 const prisma = new PrismaClient();
 

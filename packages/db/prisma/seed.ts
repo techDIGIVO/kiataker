@@ -15,6 +15,7 @@
 import { PrismaClient } from "@prisma/client";
 import { scryptSync, randomBytes, createHash } from "node:crypto";
 import { seedReferenceData, CENTRES } from "./reference-data";
+import { DEV_STAFF_PASSWORD } from "./seed-utils";
 
 const prisma = new PrismaClient();
 
@@ -26,7 +27,6 @@ function hashPassword(pw: string): string {
 }
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
-const DEV_STAFF_PASSWORD = "kiataker-dev";
 
 async function main() {
   console.log("Seeding Kiataker personas...");

@@ -13,7 +13,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "prisma"],
+  "files": [
+    "dist",
+    "prisma"
+  ],
   "scripts": {
     "generate": "prisma generate",
     "build": "prisma generate && tsc -p tsconfig.json",
@@ -22,6 +25,7 @@
     "migrate:check": "prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url \"$SHADOW_DATABASE_URL\" --exit-code && echo 'schema and migrations agree'",
     "seed": "tsx prisma/seed.ts",
     "seed:prod": "tsx prisma/seed-prod.ts",
+    "seed:centre-logins": "tsx prisma/seed-centre-logins.ts",
     "reset": "prisma migrate reset --force",
     "studio": "prisma studio",
     "typecheck": "tsc -p tsconfig.json --noEmit",

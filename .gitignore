@@ -36,3 +36,6 @@ verify-report.html
 # Release artifacts
 *.zip
 release/
+
+# Product requirements document (local reference only, not for the repo)
+Kiataker_PRD*.pdf
