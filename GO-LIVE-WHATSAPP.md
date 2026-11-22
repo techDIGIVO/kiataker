@@ -69,4 +69,25 @@ Message templates live in `packages/templates` and are submitted to Meta for app
 required to message a user outside the 24-hour customer-service window. Arrears notices
 stay off WhatsApp until the channel-policy assessment clears them (BP-09, FD-01).
 
-Full template list and cut-over steps land with Phase 2 and Phase 5.
+Proactive messages (notifications, the tenant's confirmation request) go out as the template
+of the same name when it is marked **Approved** in `/admin/whatsapp`; until then they are sent
+as free text, which Meta only delivers within 24 hours of the person's last message. So create
+each template in Meta Business Manager with exactly the same name and wording, wait for Meta's
+approval, then mark it Approved in `/admin/whatsapp`.
+
+### tenancy_confirm_request (required before tenants can confirm)
+
+Sent to a tenant when a landlord records an existing tenancy. Category **Utility**, language
+**English (en)**. Body, exactly:
+
+```
+Hello {{1}}, your landlord has recorded your tenancy on Kiataker (rent ₦{{2}} {{3}}). Please check the details and confirm, or tell us what is wrong: {{4}} The link expires in 7 days.
+```
+
+`{{1}}` tenant name, `{{2}}` rent (e.g. 1,200,000), `{{3}}` period (e.g. "a year"), `{{4}}`
+the secure link. Meta may ask for sample values when you submit it.
+
+### Sign-in codes
+
+One-time codes by email go through Resend (`RESEND_API_KEY`, `EMAIL_FROM`). Codes over
+WhatsApp need a Meta **Authentication** template, which is not built yet.

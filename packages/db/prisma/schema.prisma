@@ -1240,7 +1240,7 @@ model WhatsAppNotification {
   participantId String
   templateName  String
   params        Json      @default("[]")
-  status        String    @default("QUEUED") // QUEUED | SENT | DEFERRED | SKIPPED
+  status        String    @default("QUEUED") // QUEUED | SENT | DEFERRED | SKIPPED | FAILED
   reason        String?
   scheduledFor  DateTime?
   sentAt        DateTime?

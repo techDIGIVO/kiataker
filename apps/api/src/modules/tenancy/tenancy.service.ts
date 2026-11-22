@@ -14,8 +14,22 @@ import { validate } from "../../common/validation/validate.js";
 import { Forbidden, NotFound, Conflict } from "../../common/errors/domain-errors.js";
 import { IllegalTransitionError } from "@kiataker/domain";
 import { env } from "../../common/config/env.js";
+import { OutboundService, type Delivery } from "../../common/messaging/outbound.service.js";
 
-export type NotifyResult = TenancyDto & { secureTaskToken?: string };
+/** How the tenant was asked to confirm: through a provider, test mode only, or not at all. */
+export type TenantDelivery = Delivery | { status: "no_contact"; channel: null };
+export type NotifyResult = TenancyDto & { secureTaskToken?: string; delivery: TenantDelivery };
+
+/** Meta template for the tenant's confirmation request. Its body must match `tenantConfirmText`. */
+export const TENANT_CONFIRM_TEMPLATE = "tenancy_confirm_request";
+const PER: Record<string, string> = { annual: "a year", monthly: "a month", quarterly: "a quarter", biannual: "every six months" };
+
+/** The tenant's message. Template body: Hello {{1}}, your landlord has recorded your tenancy on
+ *  Kiataker (rent ₦{{2}} {{3}}). Please check the details and confirm, or tell us what is wrong:
+ *  {{4}} The link expires in 7 days. */
+export function tenantConfirmText(name: string, rentNaira: string, per: string, link: string): string {
+  return `Hello ${name}, your landlord has recorded your tenancy on Kiataker (rent ₦${rentNaira} ${per}). Please check the details and confirm, or tell us what is wrong: ${link} The link expires in 7 days.`;
+}
 
 @Injectable()
 export class TenancyService {
@@ -24,6 +38,7 @@ export class TenancyService {
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
     private readonly crypto: CryptoService,
+    private readonly outbound: OutboundService,
   ) {}
 
   private derivePhase(commencement: Date, expiry: Date): "FUTURE_DATED" | "CURRENT" | "EXPIRED" {
@@ -202,7 +217,7 @@ export class TenancyService {
   async notify(participantId: string, tenancyId: string): Promise<NotifyResult> {
     const t = await this.prisma.tenancy.findUnique({
       where: { id: tenancyId },
-      include: { participants: { include: { tenantProfile: true } } },
+      include: { participants: { include: { tenantProfile: true } }, terms: { orderBy: { version: "desc" }, take: 1 } },
     });
     if (!t) throw new NotFound("Tenancy not found");
     await this.assertOwnership(participantId, t.propertyId);
@@ -211,7 +226,8 @@ export class TenancyService {
 
     // Secure task for the tenant to confirm (7-day expiry, SEC-01..SEC-06).
     const token = randomBytes(24).toString("hex");
-    const contacts = (t.participants[0]?.tenantProfile.contactPoints ?? {}) as {
+    const profile = t.participants[0]?.tenantProfile;
+    const contacts = (profile?.contactPoints ?? {}) as {
       whatsapp?: string | null;
       email?: string | null;
     };
@@ -227,7 +243,26 @@ export class TenancyService {
       },
     });
 
-    return { ...dto, ...(env.WHATSAPP_ADAPTER === "fake" ? { secureTaskToken: token } : {}) };
+    // Ask the tenant directly. The link goes only to the tenant's own contact, never through the
+    // landlord, because the tenant's confirmation is evidence in its own right (BP-04, BP-19).
+    const term = t.terms[0];
+    const rentNaira = term ? (Number(term.rentKobo) / 100).toLocaleString("en-NG") : "0";
+    const per = PER[term?.frequency ?? "annual"] ?? "a year";
+    const name = profile?.name ?? "there";
+    const link = `${env.WEB_BASE_URL}/t/${token}`;
+    const text = tenantConfirmText(name, rentNaira, per, link);
+    let delivery: TenantDelivery;
+    if (contacts.whatsapp) {
+      delivery = await this.outbound.whatsapp(contacts.whatsapp, text, { name: TENANT_CONFIRM_TEMPLATE, params: [name, rentNaira, per, link] });
+    } else if (contacts.email) {
+      delivery = await this.outbound.email(contacts.email, "Please confirm your tenancy details", text);
+    } else {
+      delivery = { status: "no_contact", channel: null };
+    }
+
+    // In test mode nothing reaches the tenant, so on a dev stack the link is handed back for testing.
+    const exposeToken = delivery.status !== "sent" && env.DEV_TOOLS;
+    return { ...dto, delivery, ...(exposeToken ? { secureTaskToken: token } : {}) };
   }
 
   /**

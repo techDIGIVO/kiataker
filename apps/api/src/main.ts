@@ -28,6 +28,8 @@ async function bootstrap() {
   if (isProduction && env.DEV_TOOLS) {
     Logger.warn("DEV_TOOLS is on in production: simulator and test-payment routes are public. Never use this for a public deployment.", "Bootstrap");
   }
+  if (env.EMAIL_CONFIG_WARNING) Logger.warn(env.EMAIL_CONFIG_WARNING, "Bootstrap");
+  Logger.log(`Email: ${env.EMAIL_ADAPTER === "resend" ? `sending through Resend as ${env.EMAIL_FROM}` : "off (test mode)"}`, "Bootstrap");
   // Security headers, then observability (request id + metrics), then rate limiting (Phase 5).
   const metrics = app.get(MetricsService);
   app.use(securityHeaders(isProduction));

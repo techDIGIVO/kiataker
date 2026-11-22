@@ -23,6 +23,7 @@ import {
 import { ErrorCode } from "@kiataker/contracts";
 import { env } from "../../common/config/env.js";
 import { HttpStatus } from "@nestjs/common";
+import { OutboundService } from "../../common/messaging/outbound.service.js";
 
 /** Wrong guesses allowed per one-time code before it is burned. */
 const MAX_CODE_ATTEMPTS = 5;
@@ -37,14 +38,37 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
+    private readonly outbound: OutboundService,
   ) {}
 
   /**
    * Echo the one-time code in the response only for the local simulator. Doing so on a public
    * deployment would let anyone sign in as any phone number or email.
    */
-  private exposeDevCode() {
-    return env.WHATSAPP_ADAPTER === "fake" && env.DEV_TOOLS;
+  private exposeDevCode(channel: string) {
+    const fake = channel === "EMAIL" ? env.EMAIL_ADAPTER === "fake" : env.WHATSAPP_ADAPTER === "fake";
+    return fake && env.DEV_TOOLS;
+  }
+
+  /**
+   * Deliver a one-time code. Email goes through the email adapter (Resend in production).
+   * WhatsApp codes need a Meta AUTHENTICATION template, which is not set up yet, so they are
+   * delivered only by the local simulator for now.
+   */
+  private async deliverCode(channel: string, target: string, code: string): Promise<void> {
+    if (channel !== "EMAIL") return;
+    const delivery = await this.outbound.email(
+      target,
+      `Your Kiataker code is ${code}`,
+      `Your Kiataker sign-in code is ${code}.\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.`,
+    );
+    if (delivery.status === "failed") {
+      throw new DomainError(
+        ErrorCode.CONTACT_VERIFICATION_REQUIRED,
+        "We couldn't send the code just now. Please request a new one in a minute.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
   }
 
   /** ACC: say hello, create an account, verify contact details (GJ-01). */
@@ -90,8 +114,9 @@ export class AuthService {
       return participant.id;
     });
 
+    await this.deliverCode(input.channel, target, code);
     // Fake adapter: the local WhatsApp/email simulator delivers the code (§44.1).
-    return { participantId, ...(this.exposeDevCode() ? { devCode: code } : {}) };
+    return { participantId, ...(this.exposeDevCode(input.channel) ? { devCode: code } : {}) };
   }
 
   async sendCode(body: unknown): Promise<{ sent: true; devCode?: string }> {
@@ -125,7 +150,8 @@ export class AuthService {
         },
       }),
     ]);
-    return { sent: true, ...(this.exposeDevCode() ? { devCode: code } : {}) };
+    await this.deliverCode(input.channel, input.target, code);
+    return { sent: true, ...(this.exposeDevCode(input.channel) ? { devCode: code } : {}) };
   }
 
   async verifyCode(body: unknown): Promise<TokenPair> {

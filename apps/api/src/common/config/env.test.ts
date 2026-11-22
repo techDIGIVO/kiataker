@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // env.ts parses process.env at import time, so each case sets the environment and re-imports.
 const STRONG_A = "a".repeat(40);
 const STRONG_B = "b".repeat(40);
-const KEYS = ["NODE_ENV", "DATABASE_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET", "DEV_TOOLS", "TRUST_PROXY", "AI_API_KEY", "AI_PROVIDER", "AI_MODEL"] as const;
+const KEYS = ["NODE_ENV", "DATABASE_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET", "DEV_TOOLS", "TRUST_PROXY", "AI_API_KEY", "AI_PROVIDER", "AI_MODEL", "EMAIL_ADAPTER", "RESEND_API_KEY", "EMAIL_FROM"] as const;
 
 async function load(vars: Partial<Record<(typeof KEYS)[number], string>>) {
   for (const k of KEYS) delete process.env[k];
@@ -63,6 +63,18 @@ describe("env", () => {
     expect(env.DEV_TOOLS).toBe(true);
     expect(env.AI_PROVIDER).toBeUndefined();
     expect(env.TRUST_PROXY).toBe(false);
+  });
+
+  it("picks the email adapter from RESEND_API_KEY and needs a sender", async () => {
+    expect((await load({})).EMAIL_ADAPTER).toBe("fake");
+    expect((await load({ RESEND_API_KEY: "re_x", EMAIL_FROM: "Kiataker <no-reply@kiataker.ng>" })).EMAIL_ADAPTER).toBe("resend");
+    // A half-finished setup keeps email off with a warning instead of stopping the API.
+    const noFrom = await load({ RESEND_API_KEY: "re_x" });
+    expect(noFrom.EMAIL_ADAPTER).toBe("fake");
+    expect(noFrom.EMAIL_CONFIG_WARNING).toMatch(/EMAIL_FROM/);
+    const noKey = await load({ EMAIL_ADAPTER: "resend", EMAIL_FROM: "x@y.z" });
+    expect(noKey.EMAIL_ADAPTER).toBe("fake");
+    expect(noKey.EMAIL_CONFIG_WARNING).toMatch(/RESEND_API_KEY/);
   });
 
   it("honours explicit DEV_TOOLS and TRUST_PROXY values", async () => {

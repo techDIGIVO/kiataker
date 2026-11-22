@@ -459,10 +459,21 @@ async function main() {
   const rt = await chat(waFrom, { replyId: "record_tenancy" });
   const rtProp = findItemId(rt.messages, "prop:");
   await chat(waFrom, { replyId: rtProp });
-  await chat(waFrom, { text: "Chat Tenant" });
-  await chat(waFrom, { text: "1200000" });
+  const askContact = await chat(waFrom, { text: "Chat Tenant" });
+  ok("record-tenancy asks for the tenant's WhatsApp number", chatText(askContact.messages).includes("WhatsApp number"));
+  const badContact = await chat(waFrom, { text: "next week" });
+  ok("record-tenancy refuses a contact that is not a number or email", chatText(badContact.messages).includes("for example 0803"));
+  await chat(waFrom, { text: "0803 555 0101" });
+  const phoneAsRent = await chat(waFrom, { text: "+2348091234567" });
+  ok("a phone number typed as rent is explained, not recorded", chatText(phoneAsRent.messages).includes("looks like a phone number"));
+  const rentConfirm = await chat(waFrom, { text: "1.2m" });
+  ok("rent typed as 1.2m reads as N1,200,000 with the tenant's number", chatText(rentConfirm.messages).includes("1,200,000") && chatText(rentConfirm.messages).includes("+234 803 555 0101"));
   const recorded = await chat(waFrom, { replyId: "confirm" });
   ok("chat records a tenancy", chatText(recorded.messages).includes("Tenancy recorded"));
+  ok("in test mode the chat says nothing was sent and gives the tenant link", chatText(recorded.messages).includes("test mode") && chatText(recorded.messages).includes("/t/"));
+  const tenantLink = /\/t\/([a-f0-9]{48})/.exec(chatText(recorded.messages))?.[1];
+  const tenantTask = tenantLink ? await call("GET", `/t/${tenantLink}`) : { json: {} };
+  ok("the tenant link opens the tenant's confirmation task", tenantTask.json.purpose === "TENANT_CONFIRM");
 
   // Arrears gate (GJ-16, BP-10): collect-rent is blocked until its HIGH-risk control is on.
   const crBlocked = await chat(waFrom, { replyId: "collect_rent" });

@@ -64,6 +64,10 @@ services:
         sync: false
       - key: AI_MODEL
         value: gemini-3.5-flash-lite
+      - key: RESEND_API_KEY # optional: enables email (sign-in codes, tenant links); see .env.example
+        sync: false
+      - key: EMAIL_FROM # e.g. Kiataker <no-reply@kiataker.ng>, on a domain verified in Resend
+        sync: false
 
       # ---- Hardening ----
       - key: RATE_LIMIT_MAX

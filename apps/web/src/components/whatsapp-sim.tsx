@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "./brand";
 
 const API_BASE = process.env.API_BASE_URL ?? "http://localhost:4000";
+const WHATSAPP_LINK = "https://wa.me/2349065009370?text=" + encodeURIComponent("Hello Kiataker");
 
 interface Btn { id: string; title: string }
 interface Item { id: string; title: string; description?: string }
@@ -22,13 +23,15 @@ function phoneFor(): string {
   }
 }
 
-/** Interactive WhatsApp simulator. Talks to the live conversation engine, so it works the
- *  same locally and in production (visitors try the agent before they download anything). */
+/** Interactive WhatsApp simulator. Talks to the conversation engine's simulator endpoint, which
+ *  is a dev tool: where it is switched off (production), the phone offers the real WhatsApp
+ *  number instead of failing. */
 export function WhatsAppSim({ maxWidth = 340 }: { maxWidth?: number }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [from, setFrom] = useState("");
+  const [offline, setOffline] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +54,14 @@ export function WhatsAppSim({ maxWidth = 340 }: { maxWidth?: number }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ from: phone, text: input.text, replyId: input.replyId }),
       });
+      if (res.status === 404) {
+        // The simulator endpoint is off on this deployment: point visitors to the real number.
+        setOffline(true);
+        setMsgs([{ side: "in", text: "Hello 👋 The live demo isn't available here. Chat with Kiataker on WhatsApp to try it for real.", time: now() }]);
+        setBusy(false);
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       await new Promise((r) => setTimeout(r, 400));
       for (const m of json.messages ?? []) {
@@ -82,7 +93,7 @@ export function WhatsAppSim({ maxWidth = 340 }: { maxWidth?: number }) {
         <div className="wa-header">
           <span className="wa-avatar"><LogoMark size={20} color="#075E54" /></span>
           <span className="wa-peer"><span className="wa-name">Kiataker</span><span className="wa-online">online</span></span>
-          <span style={{ marginLeft: "auto", cursor: "pointer", fontSize: 11, opacity: 0.85 }} onClick={reset}>Reset</span>
+          {!offline && <span style={{ marginLeft: "auto", cursor: "pointer", fontSize: 11, opacity: 0.85 }} onClick={reset}>Reset</span>}
         </div>
         <div className="wa-chat" ref={chatRef} style={{ justifyContent: "flex-start", overflowY: "auto" }}>
           {msgs.map((m, i) => (
@@ -112,15 +123,20 @@ export function WhatsAppSim({ maxWidth = 340 }: { maxWidth?: number }) {
               )}
             </div>
           ))}
+          {offline && (
+            <div className="wa-row wa-row-in">
+              <a className="wa-reply" href={WHATSAPP_LINK} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Open WhatsApp</a>
+            </div>
+          )}
           {busy && (
             <div className="wa-row wa-row-in">
               <div className="wa-bubble wa-in wa-typing"><span className="wa-dot" /><span className="wa-dot" /><span className="wa-dot" /></div>
             </div>
           )}
         </div>
-        <form className="wa-input" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { send({ text }); setText(""); } }}>
-          <input className="wa-input-live" value={text} onChange={(e) => setText(e.target.value)} placeholder="Message" />
-          <button type="submit" className="wa-send" aria-label="Send">
+        <form className="wa-input" onSubmit={(e) => { e.preventDefault(); if (!offline && text.trim()) { send({ text }); setText(""); } }}>
+          <input className="wa-input-live" value={text} onChange={(e) => setText(e.target.value)} placeholder={offline ? "Demo unavailable" : "Message"} disabled={offline} aria-label="Message" />
+          <button type="submit" className="wa-send" aria-label="Send" disabled={offline}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20l18-8L3 4v6l12 2-12 2z" /></svg>
           </button>
         </form>

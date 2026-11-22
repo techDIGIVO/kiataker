@@ -24,6 +24,12 @@ const EnvSchema = z
     AI_API_KEY: z.string().optional(),
     AI_PROVIDER: z.enum(["anthropic", "openai", "google"]).optional(),
     AI_MODEL: z.string().optional(),
+    // Transactional email (sign-in codes, tenant links when a tenant has no WhatsApp). "resend"
+    // sends through Resend's HTTP API; "fake" only logs. Unset = resend when RESEND_API_KEY is
+    // set, otherwise fake. EMAIL_FROM must be an address on a domain verified in Resend.
+    EMAIL_ADAPTER: z.enum(["fake", "resend"]).optional(),
+    RESEND_API_KEY: z.string().optional(),
+    EMAIL_FROM: z.string().optional(),
     // Dev-only surfaces: the WhatsApp simulator endpoints, one-time codes echoed in responses,
     // and the "mark paid" test completion. Unset = on outside production, off in production.
     // They let a caller act as any phone number, so never turn them on for a public deployment.
@@ -85,10 +91,21 @@ function loadEnv() {
   if (aiApiKey && !aiProvider) {
     throw new Error("Invalid environment configuration:\n  - AI_PROVIDER: set it to anthropic, openai or google (could not tell from AI_API_KEY)");
   }
+  // Email is optional, so a half-finished setup must not stop the API: it stays off (fake) and
+  // the reason is logged, rather than failing to boot.
+  const wantsResend = parsed.EMAIL_ADAPTER === "resend" || (!parsed.EMAIL_ADAPTER && !!parsed.RESEND_API_KEY);
+  let emailAdapter: "fake" | "resend" = "fake";
+  let emailWarning: string | undefined;
+  if (wantsResend && !parsed.RESEND_API_KEY) emailWarning = "EMAIL_ADAPTER=resend but RESEND_API_KEY is not set; email is off.";
+  else if (wantsResend && !parsed.EMAIL_FROM) emailWarning = "RESEND_API_KEY is set but EMAIL_FROM is not (e.g. Kiataker <no-reply@kiataker.ng>); email is off.";
+  else if (wantsResend) emailAdapter = "resend";
   return {
     ...parsed,
     AI_API_KEY: aiApiKey,
     AI_PROVIDER: aiProvider,
+    EMAIL_ADAPTER: emailAdapter,
+    // Set when email was asked for but cannot be sent; main.ts logs it at startup.
+    EMAIL_CONFIG_WARNING: emailWarning,
     DEV_TOOLS: parsed.DEV_TOOLS ?? !isProduction,
     TRUST_PROXY: trustProxyValue(parsed.TRUST_PROXY, isProduction),
   };

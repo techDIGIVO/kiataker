@@ -17,3 +17,20 @@ if (existsSync(envPath)) {
     if (!(key in process.env)) process.env[key] = value;
   }
 }
+
+// Tests create and delete data. Refuse to run them against anything but a local database, so a
+// production or staging URL left in .env.local can never be written to by a test run.
+const dbUrl = process.env.DATABASE_URL ?? "";
+let dbHost = "";
+try {
+  dbHost = new URL(dbUrl).hostname;
+} catch {
+  /* no or malformed URL: tests that need a database will fail on their own */
+}
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "postgres", "host.docker.internal"]);
+if (dbHost && !LOCAL_HOSTS.has(dbHost) && process.env.ALLOW_REMOTE_TEST_DB !== "yes") {
+  throw new Error(
+    `Refusing to run tests: DATABASE_URL points at "${dbHost}", which is not a local database. ` +
+      "Point it at your local Postgres (see .env.example), or set ALLOW_REMOTE_TEST_DB=yes for a disposable remote one.",
+  );
+}

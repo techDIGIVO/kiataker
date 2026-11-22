@@ -159,7 +159,7 @@ test("the bulk intake board renders", async ({ page }) => {
 test("the providers board renders", async ({ page }) => {
   await signIn(page);
   await page.goto("/admin/providers");
-  await expect(page.getByRole("heading", { name: "Providers", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Providers", exact: true })).toBeVisible();
   await expect(page.getByText("Applications")).toBeVisible();
 });
 

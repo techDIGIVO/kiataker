@@ -19,6 +19,8 @@ import { MaintenanceService } from "../maintenance/maintenance.service.js";
 import { PaymentsService } from "../payments/payments.service.js";
 import { DocumentsService } from "../documents/documents.service.js";
 import { env } from "../../common/config/env.js";
+import { readAmount, readContact, normalizePhone, displayPhone } from "./chat-input.util.js";
+import type { NotifyResult } from "../tenancy/tenancy.service.js";
 
 export type OutMsg =
   | { type: "text"; text: string }
@@ -208,17 +210,30 @@ export class ConversationService {
       if (session.step === "tenant") {
         if (!text) return [{ type: "text", text: "Please send the tenant's name." }];
         data.tenantName = text;
+        await this.setSession(address, participantId, "record_tenancy", "contact", data);
+        return [{ type: "text", text: `What is ${text}'s WhatsApp number? I'll message them to confirm the details. For example 0803 123 4567. If they don't use WhatsApp, send their email address instead.` }];
+      }
+      if (session.step === "contact") {
+        const contact = readContact(text);
+        if (!contact) return [{ type: "text", text: "Please send the tenant's WhatsApp number, for example 0803 123 4567, or their email address." }];
+        if ("whatsapp" in contact && contact.whatsapp === normalizePhone(address)) {
+          return [{ type: "text", text: "That's your own number. Please send the tenant's WhatsApp number, so they can confirm the details themselves." }];
+        }
+        data.tenantWhatsapp = "whatsapp" in contact ? contact.whatsapp : "";
+        data.tenantEmail = "email" in contact ? contact.email : "";
         await this.setSession(address, participantId, "record_tenancy", "rent", data);
-        return [{ type: "text", text: "What is the annual rent? Send the amount in naira, for example 1500000." }];
+        return [{ type: "text", text: "What is the annual rent? Send the amount in naira, for example 1500000 or 1.5m." }];
       }
       if (session.step === "rent") {
-        const naira = Number(text.replace(/[^0-9]/g, ""));
-        if (!naira) return [{ type: "text", text: "Please send the rent amount in figures, for example 1500000." }];
+        const amount = readAmount(text);
+        if ("problem" in amount) return [{ type: "text", text: amount.problem }];
+        const naira = amount.naira;
         data.rentKobo = String(naira * 100);
         await this.setSession(address, participantId, "record_tenancy", "confirm", data);
+        const reach = data.tenantWhatsapp ? `on WhatsApp at ${displayPhone(data.tenantWhatsapp)}` : `by email at ${data.tenantEmail}`;
         return [{
           type: "buttons",
-          text: `Please check: tenant ${data.tenantName}, annual rent ₦${naira.toLocaleString()}. Kiataker records this as you state it, then asks the tenant to confirm. Shall I record it?`,
+          text: `Please check: tenant ${data.tenantName}, annual rent ₦${naira.toLocaleString("en-NG")}. Kiataker records this as you state it, then asks the tenant ${reach} to confirm. Shall I record it?`,
           buttons: [
             { id: "confirm", title: "Yes, record it" },
             { id: "cancel", title: "Cancel" },
@@ -235,16 +250,17 @@ export class ConversationService {
         expiry.setFullYear(expiry.getFullYear() + 1);
         const tenancy = await this.tenancies.recordExisting(participantId, {
           propertyId: data.propertyId,
-          tenant: { name: data.tenantName },
+          tenant: {
+            name: data.tenantName,
+            ...(data.tenantWhatsapp ? { whatsapp: data.tenantWhatsapp } : {}),
+            ...(data.tenantEmail ? { email: data.tenantEmail } : {}),
+          },
           terms: { rentKobo: data.rentKobo, frequency: "annual", commencementDate: now.toISOString(), expiryDate: expiry.toISOString() },
           accuracyAcknowledged: true,
         });
-        await this.tenancies.notify(participantId, tenancy.id);
+        const out = await this.tenancies.notify(participantId, tenancy.id);
         await this.setSession(address, participantId, null, null, {});
-        return [
-          { type: "text", text: `✅ Tenancy recorded for ${data.tenantName}. I've notified the tenant on WhatsApp to confirm the details. I'll let you know when they respond.` },
-          this.menu(),
-        ];
+        return [{ type: "text", text: this.tenantAskedText(data.tenantName, out.delivery, out.secureTaskToken) }, this.menu()];
       }
     }
 
@@ -280,7 +296,7 @@ export class ConversationService {
         }
         const out = await this.notices.instruct(participantId, { tenancyId: data.tenancyId, templateVersionId: data.templateVersionId });
         await this.setSession(address, participantId, null, null, {});
-        const link = `${env.WEB_BASE_URL}/t/${out.secureTaskToken ?? ""}`;
+        const link = `${env.WEB_BASE_URL}/t/${out.secureTaskToken}`;
         return [
           { type: "text", text: `Notice prepared. To authorise it, open this secure link and approve:\n\n${link}\n\nOnce you approve, I'll dispatch it and record delivery. If electronic delivery is not confirmed, ask me for physical service.` },
           this.menu(),
@@ -412,11 +428,12 @@ export class ConversationService {
         if (!text) return [{ type: "text", text: "Please send the tenant's name." }];
         data.tenantName = text;
         await this.setSession(address, participantId, "new_tenancy", "rent", data);
-        return [{ type: "text", text: "What is the annual rent? Send the amount in naira, for example 1500000." }];
+        return [{ type: "text", text: "What is the annual rent? Send the amount in naira, for example 1500000 or 1.5m." }];
       }
       if (session.step === "rent") {
-        const naira = Number(text.replace(/[^0-9]/g, ""));
-        if (!naira) return [{ type: "text", text: "Please send the rent amount in figures, for example 1500000." }];
+        const amount = readAmount(text);
+        if ("problem" in amount) return [{ type: "text", text: amount.problem }];
+        const naira = amount.naira;
         data.rentKobo = String(naira * 100);
         await this.setSession(address, participantId, "new_tenancy", "confirm", data);
         return [{
@@ -537,8 +554,10 @@ export class ConversationService {
         return [this.menu()];
       }
       if (session.step === "deduct_amount") {
-        const naira = Number(text.replace(/[^0-9]/g, ""));
-        if (!naira) return this.showCloseout(address, participantId, data.closeoutId, data);
+        if (text.trim() === "0") return this.showCloseout(address, participantId, data.closeoutId, data);
+        const amount = readAmount(text, { min: 1 });
+        if ("problem" in amount) return [{ type: "text", text: `${amount.problem} Send 0 to go back.` }];
+        const naira = amount.naira;
         await this.closeout.addDeduction(participantId, data.closeoutId, { reason: "Deduction", amountKobo: String(naira * 100) });
         return this.showCloseout(address, participantId, data.closeoutId, data);
       }
@@ -990,6 +1009,24 @@ export class ConversationService {
       `Outstanding: ${naira(t.outstandingKobo)}`,
     ];
     return [{ type: "text", text: lines.join("\n") }, this.menu()];
+  }
+
+  /** What to tell the landlord after asking the tenant to confirm: exactly what happened, no more. */
+  private tenantAskedText(name: string, delivery: NotifyResult["delivery"], token?: string): string {
+    const recorded = `✅ Tenancy recorded for ${name}.`;
+    const after = 'If they dispute anything, it will appear under "What needs my decision".';
+    if (delivery.status === "sent") {
+      const via = delivery.channel === "email" ? "an email" : "a WhatsApp message";
+      return `${recorded} I've sent ${name} ${via} asking them to confirm the details. ${after}`;
+    }
+    if (delivery.status === "test_mode") {
+      const link = token ? `\n\nTest mode link for the tenant: ${env.WEB_BASE_URL}/t/${token}` : "";
+      return `${recorded} Messaging is in test mode, so nothing was sent to ${name}.${link}`;
+    }
+    if (delivery.status === "failed") {
+      return `${recorded} I couldn't send ${name} the confirmation request just now. Choose "Talk to a person" and our team will help.`;
+    }
+    return `${recorded} There's no WhatsApp number or email for ${name}, so I couldn't ask them to confirm.`;
   }
 
   private menu(): OutMsg {

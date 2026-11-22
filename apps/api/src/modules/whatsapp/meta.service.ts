@@ -1,8 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { ConversationService, type OutMsg } from "./conversation.service.js";
 import { env } from "../../common/config/env.js";
+import { OutboundService } from "../../common/messaging/outbound.service.js";
 
 interface MetaCredentials {
   phoneNumberId?: string;
@@ -25,11 +26,10 @@ interface ParsedInbound {
  */
 @Injectable()
 export class MetaService {
-  private readonly logger = new Logger("MetaService");
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversation: ConversationService,
+    private readonly outbound: OutboundService,
   ) {}
 
   private async credentials(): Promise<MetaCredentials> {
@@ -88,36 +88,12 @@ export class MetaService {
     return { received: true, handled: inbound.length };
   }
 
-  /** Send a single plain-text message through the Cloud API (used by proactive notifications). */
-  async sendText(to: string, text: string): Promise<void> {
-    await this.send(to, [{ type: "text", text }]);
-  }
-
   /** Send replies through the Cloud API (live mode only). The simulator reads the message log. */
   private async send(to: string, messages: OutMsg[]): Promise<void> {
-    const { phoneNumberId, accessToken } = await this.credentials();
-    if (!phoneNumberId || !accessToken) {
-      this.logger.warn("Meta send skipped: credentials not set");
-      return;
-    }
     for (const m of messages) {
-      const payload = this.toCloudPayload(to, m);
-      try {
-        const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!res.ok) {
-          // Meta returns { error: { code, message } }: an expired token, an unapproved template,
-          // or a closed 24-hour window all land here. Log it; never the recipient or the body.
-          const detail = (await res.json().catch(() => null)) as { error?: { code?: number; message?: string } } | null;
-          this.logger.error(`Meta send rejected: HTTP ${res.status} code=${detail?.error?.code ?? "?"} ${detail?.error?.message ?? ""}`.trim());
-        }
-      } catch (e) {
-        this.logger.error(`Meta send failed: ${(e as Error).message}`);
-      }
+      // Replies answer an inbound message, so they are inside the 24-hour window: no template.
+      // Failures are logged by OutboundService (never the recipient or the body).
+      await this.outbound.postToCloud(this.toCloudPayload(to, m));
     }
   }
 

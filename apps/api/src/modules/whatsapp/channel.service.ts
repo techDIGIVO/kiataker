@@ -1,10 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { CryptoService } from "../../common/crypto/crypto.service.js";
-import { MetaService } from "./meta.service.js";
+import { OutboundService } from "../../common/messaging/outbound.service.js";
 import { AuditService } from "../../common/audit/audit.service.js";
 import { NotFound, Conflict } from "../../common/errors/domain-errors.js";
-import { env } from "../../common/config/env.js";
 
 export interface QuietHours {
   startHour: number;
@@ -25,7 +24,7 @@ export class ChannelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
-    private readonly meta: MetaService,
+    private readonly outbound: OutboundService,
     private readonly audit: AuditService,
   ) {}
 
@@ -52,14 +51,11 @@ export class ChannelService {
   /** Staff reply into a conversation: log it and send over the Cloud API (no-op without credentials). */
   async staffReply(staffId: string, address: string, text: string) {
     if (!text?.trim()) throw new Conflict("A reply needs some text");
-    await this.prisma.messageLog.create({ data: { channel: "whatsapp", address, direction: "out", body: text.trim() } });
-    try {
-      await this.meta.sendText(address, text.trim());
-    } catch (e) {
-      this.logger.warn(`Staff reply send failed (logged anyway): ${(e as Error).message}`);
-    }
+    // A reply answers someone who wrote in, so it is normally inside Meta's 24-hour window: free text.
+    const delivery = await this.outbound.whatsapp(address, text.trim());
     await this.prisma.$transaction((tx) => this.audit.record(tx, { actor: staffId, action: "admin.inbox.reply", objectRef: `inbox:${address}`, reason: "staff reply" }));
-    return { sent: true };
+    // `sent` means recorded in the thread; `delivery` says whether WhatsApp actually took it.
+    return { sent: true, delivery };
   }
 
   // ---- Templates ----
@@ -141,7 +137,7 @@ export class ChannelService {
       });
     }
     const notification = await this.prisma.whatsAppNotification.create({ data: { participantId, templateName, params, status: "QUEUED" } });
-    await this.deliver(notification.id, template.body, participantId, params);
+    await this.deliver(notification.id, templateName, template.body, participantId, params);
     return this.prisma.whatsAppNotification.findUnique({ where: { id: notification.id } });
   }
 
@@ -159,7 +155,7 @@ export class ChannelService {
         await this.prisma.whatsAppNotification.update({ where: { id: n.id }, data: { status: "SKIPPED", reason: "template no longer approved" } });
         continue;
       }
-      await this.deliver(n.id, template.body, n.participantId, (n.params as string[]) ?? []);
+      await this.deliver(n.id, n.templateName, template.body, n.participantId, (n.params as string[]) ?? []);
       sent++;
     }
     return { sent };
@@ -169,17 +165,25 @@ export class ChannelService {
     return this.prisma.whatsAppNotification.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
   }
 
-  /** Render the template, log the outbound message, and (in live mode) send via the Cloud API. */
-  private async deliver(notificationId: string, body: string, participantId: string, params: string[]): Promise<void> {
+  /** Render the template, log the outbound message, and (in live mode) send it as that template. */
+  private async deliver(notificationId: string, templateName: string, body: string, participantId: string, params: string[]): Promise<void> {
     const text = body.replace(/\{\{(\d+)\}\}/g, (_m, i) => params[Number(i) - 1] ?? "");
     const address = await this.resolveAddress(participantId);
-    if (address) {
-      await this.prisma.messageLog.create({ data: { channel: "whatsapp", address, direction: "out", body: text } });
-      if (env.WHATSAPP_ADAPTER === "meta") await this.meta.sendText(address, text);
-    } else {
+    if (!address) {
       this.logger.warn(`No WhatsApp address for participant ${participantId}; notification not delivered`);
+      await this.prisma.whatsAppNotification.update({ where: { id: notificationId }, data: { status: "SKIPPED", reason: "no WhatsApp number on file" } });
+      return;
     }
-    await this.prisma.whatsAppNotification.update({ where: { id: notificationId }, data: { status: "SENT", sentAt: new Date() } });
+    // Proactive: the person may not have written in 24 hours, so it goes out as the approved template.
+    const delivery = await this.outbound.whatsapp(address, text, { name: templateName, params });
+    if (delivery.status === "failed") {
+      await this.prisma.whatsAppNotification.update({ where: { id: notificationId }, data: { status: "FAILED", reason: delivery.reason ?? "WhatsApp refused the message" } });
+      return;
+    }
+    await this.prisma.whatsAppNotification.update({
+      where: { id: notificationId },
+      data: { status: "SENT", sentAt: new Date(), reason: delivery.status === "test_mode" ? "test mode: logged, not delivered" : null },
+    });
   }
 
   private async resolveAddress(participantId: string): Promise<string | null> {

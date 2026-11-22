@@ -5,7 +5,6 @@ import { CryptoService } from "../../common/crypto/crypto.service.js";
 import { OutboxService } from "../../common/outbox/outbox.service.js";
 import { AuditService } from "../../common/audit/audit.service.js";
 import { Forbidden, NotFound, Conflict } from "../../common/errors/domain-errors.js";
-import { env } from "../../common/config/env.js";
 
 /** Default counsel-approved notice templates (NT codes). Seeded lazily. */
 const DEFAULT_TEMPLATES = [
@@ -95,7 +94,9 @@ export class NoticesService {
       return notice;
     });
 
-    return { notice: this.toDto(result), ...(env.WHATSAPP_ADAPTER === "fake" ? { secureTaskToken: token } : {}) };
+    // The approval link belongs to the landlord who instructed the notice (recipientRole LANDLORD),
+    // so it is returned to them in every mode; the chat hands it over as the secure-page step.
+    return { notice: this.toDto(result), secureTaskToken: token };
   }
 
   /** Approve on the secure page, then generate, dispatch and record delivery (GJ-07). */

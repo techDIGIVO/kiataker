@@ -10,6 +10,7 @@ import { MetricsService } from "./observability/metrics.service.js";
 import { ErrorReporter } from "./observability/error-reporter.service.js";
 import { LabelService } from "./read/label.service.js";
 import { SchedulerService } from "./scheduler/scheduler.service.js";
+import { OutboundService } from "./messaging/outbound.service.js";
 
 /** Shared platform services, available to every module (adapters at the edges, §41.8). */
 @Global()
@@ -26,6 +27,7 @@ import { SchedulerService } from "./scheduler/scheduler.service.js";
     ErrorReporter,
     LabelService,
     SchedulerService,
+    OutboundService,
   ],
   exports: [
     CryptoService,
@@ -39,6 +41,7 @@ import { SchedulerService } from "./scheduler/scheduler.service.js";
     ErrorReporter,
     LabelService,
     SchedulerService,
+    OutboundService,
   ],
 })
 export class CoreModule {}
