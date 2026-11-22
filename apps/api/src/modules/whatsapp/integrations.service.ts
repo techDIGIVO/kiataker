@@ -84,7 +84,9 @@ export class IntegrationsService {
         working: env.EMAIL_ADAPTER === "resend",
         note:
           env.EMAIL_CONFIG_WARNING ??
-          (env.EMAIL_ADAPTER === "resend"
+          (env.EMAIL_ADAPTER === "resend" && /@resend\.dev>?$/i.test(env.EMAIL_FROM ?? "")
+            ? "Resend's test sender: it only delivers to the email that owns the Resend account. Verify kiataker.ng in Resend and change EMAIL_FROM before real use."
+            : env.EMAIL_ADAPTER === "resend"
             ? "Sending through Resend. Use Send test email to check delivery."
             : "Off. Set RESEND_API_KEY and EMAIL_FROM on the server to send sign-in codes and tenant links by email."),
       },

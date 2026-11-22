@@ -30,6 +30,9 @@ async function bootstrap() {
   }
   if (env.EMAIL_CONFIG_WARNING) Logger.warn(env.EMAIL_CONFIG_WARNING, "Bootstrap");
   Logger.log(`Email: ${env.EMAIL_ADAPTER === "resend" ? `sending through Resend as ${env.EMAIL_FROM}` : "off (test mode)"}`, "Bootstrap");
+  if (env.EMAIL_ADAPTER === "resend" && /@resend\.dev>?$/i.test(env.EMAIL_FROM ?? "")) {
+    Logger.warn("EMAIL_FROM is Resend's test sender: email only reaches the Resend account owner's address.", "Bootstrap");
+  }
   // Security headers, then observability (request id + metrics), then rate limiting (Phase 5).
   const metrics = app.get(MetricsService);
   app.use(securityHeaders(isProduction));
