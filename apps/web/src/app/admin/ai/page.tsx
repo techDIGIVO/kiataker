@@ -10,6 +10,7 @@ interface Status {
   ai: { provider: string; model: string; keySet: boolean; keyHint: string | null; working: boolean; note: string };
   whatsapp: { mode: string; phoneNumberIdSet: boolean; accessTokenSet: boolean; accessTokenHint: string | null; verifyTokenSet: boolean; appSecretSet: boolean; businessNumber: string; working: boolean; note: string };
   payments: { mode: string; secretKeySet: boolean; secretKeyHint: string | null; publicKeySet: boolean; feeBps: number; working: boolean; note: string };
+  email: { mode: string; keySet: boolean; keyHint: string | null; from: string | null; working: boolean; note: string };
 }
 
 const label: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 600, color: "var(--k-text-secondary)", margin: "0 0 7px" };
@@ -29,6 +30,9 @@ export default function AiSettings() {
   const [testMsg, setTestMsg] = useState("my tenant has not paid rent");
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailResult, setEmailResult] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
 
   async function reload() {
     const [c, s] = await Promise.all([
@@ -47,6 +51,24 @@ export default function AiSettings() {
   }, []);
 
   const current = providers.find((p) => p.id === cfg?.provider);
+
+  async function sendTestEmail() {
+    setEmailBusy(true);
+    setEmailResult("");
+    try {
+      const r = await apiSend<{ status: string; reason?: string }>("POST", "/internal/integrations/email/test", { to: emailTo });
+      setEmailResult(
+        r.status === "sent"
+          ? `Sent to ${emailTo}. Check the inbox (and spam).`
+          : r.status === "test_mode"
+            ? "Not sent: email is off on the server (see the Email card above)."
+            : `Resend refused it: ${r.reason ?? "unknown error"}`,
+      );
+    } catch (e) {
+      setEmailResult((e as Error).message);
+    }
+    setEmailBusy(false);
+  }
 
   async function saveConfig() {
     if (!cfg) return;
@@ -108,6 +130,7 @@ export default function AiSettings() {
               <StatusCard title="WhatsApp AI" working={status.ai.working} lines={[`Provider: ${status.ai.provider}`, `Model: ${status.ai.model}`, status.ai.keySet ? `Key: ${status.ai.keyHint ?? "set"}` : "Key: not set", status.ai.note]} />
               <StatusCard title="WhatsApp channel" working={status.whatsapp.working} lines={[`Mode: ${status.whatsapp.mode}`, status.whatsapp.accessTokenSet ? `Token: ${status.whatsapp.accessTokenHint}` : "Meta token: not set", status.whatsapp.note]} />
               <StatusCard title="Payments" working={status.payments.working} lines={[`Mode: ${status.payments.mode}`, status.payments.secretKeySet ? `Key: ${status.payments.secretKeyHint}` : "Paystack key: not set", status.payments.note]} />
+              <StatusCard title="Email" working={status.email.working} lines={[`Mode: ${status.email.mode}`, status.email.keySet ? `Resend key: ${status.email.keyHint}` : "Resend key: not set", `From: ${status.email.from ?? "not set"}`, status.email.note]} />
             </div>
 
             {/* Model & behaviour */}
@@ -196,6 +219,19 @@ export default function AiSettings() {
                     <button className="btn btn-outline" style={{ flex: "none" }} onClick={saveFee} disabled={feePct === ""}>Save fee</button>
                   </div>
                 </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--k-border)", paddingTop: 20, marginTop: 20 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Email (Resend)</div>
+                <p style={{ fontSize: 13, color: "var(--k-text-muted)", marginBottom: 12 }}>
+                  The Resend key and sender address are set on the server (RESEND_API_KEY, EMAIL_FROM). Send a test email to check delivery.
+                </p>
+                <label style={label} htmlFor="email-test-to">Send a test email to</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <input id="email-test-to" style={input} type="email" placeholder="you@company.com" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} />
+                  <button className="btn btn-outline" style={{ flex: "none" }} onClick={sendTestEmail} disabled={emailBusy || !emailTo.trim()}>{emailBusy ? "Sending..." : "Send test email"}</button>
+                </div>
+                {emailResult && <p role="status" style={{ fontSize: 13, marginTop: 10 }}>{emailResult}</p>}
               </div>
             </div>
 

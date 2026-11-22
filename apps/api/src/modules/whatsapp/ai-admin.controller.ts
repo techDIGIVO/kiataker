@@ -34,6 +34,11 @@ export class AiAdminController {
     return this.integrations.status();
   }
 
+  @Post("integrations/email/test")
+  emailTest(@CurrentUser() user: RequestUser, @Body() body: { to: string }) {
+    return this.integrations.sendTestEmail(body?.to, user.sub);
+  }
+
   @Put("integrations/ai-key")
   aiKey(@CurrentUser() user: RequestUser, @Body() body: { provider: string; apiKey: string }) {
     return this.integrations.saveAiKey(body.provider, body.apiKey, user.sub);

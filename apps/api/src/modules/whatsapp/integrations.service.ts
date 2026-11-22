@@ -3,6 +3,8 @@ import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { AuditService } from "../../common/audit/audit.service.js";
 import { AiService } from "./ai.service.js";
 import { env } from "../../common/config/env.js";
+import { OutboundService } from "../../common/messaging/outbound.service.js";
+import { Conflict } from "../../common/errors/domain-errors.js";
 
 const mask = (v?: string | null) => (v && v.length > 3 ? "••••" + v.slice(-4) : v ? "••••" : null);
 
@@ -17,6 +19,7 @@ export class IntegrationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly ai: AiService,
+    private readonly outbound: OutboundService,
   ) {}
 
   private async get(key: string): Promise<Record<string, string>> {
@@ -73,6 +76,18 @@ export class IntegrationsService {
         working: env.WHATSAPP_ADAPTER === "fake" || (Boolean(wa.phoneNumberId) && Boolean(wa.accessToken)),
         note: env.WHATSAPP_ADAPTER === "fake" ? "Local simulator is live. Enter Meta Cloud API keys to go live on the real number." : "Meta Cloud API.",
       },
+      email: {
+        mode: env.EMAIL_ADAPTER,
+        keySet: Boolean(env.RESEND_API_KEY),
+        keyHint: mask(env.RESEND_API_KEY),
+        from: env.EMAIL_FROM ?? null,
+        working: env.EMAIL_ADAPTER === "resend",
+        note:
+          env.EMAIL_CONFIG_WARNING ??
+          (env.EMAIL_ADAPTER === "resend"
+            ? "Sending through Resend. Use Send test email to check delivery."
+            : "Off. Set RESEND_API_KEY and EMAIL_FROM on the server to send sign-in codes and tenant links by email."),
+      },
       payments: {
         mode: env.PAYMENTS_ADAPTER,
         secretKeySet: Boolean(ps.secretKey),
@@ -83,6 +98,19 @@ export class IntegrationsService {
         note: env.PAYMENTS_ADAPTER === "fake" ? "Test mode. Enter Paystack keys to settle live (behind its own gate)." : "Paystack.",
       },
     };
+  }
+
+  /** Send a test email so staff can confirm delivery end to end; reports exactly what happened. */
+  async sendTestEmail(to: string, actor: string) {
+    const address = (to ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(address)) throw new Conflict("Enter a valid email address");
+    const delivery = await this.outbound.email(
+      address,
+      "Kiataker test email",
+      "This is a test email from the Kiataker admin. If you can read it, email delivery is working.",
+    );
+    await this.prisma.$transaction((tx) => this.audit.record(tx, { actor, action: "admin.integrations.email_test", objectRef: "integrations:email", reason: delivery.status }));
+    return delivery;
   }
 
   async saveAiKey(provider: string, apiKey: string, actor: string) {
