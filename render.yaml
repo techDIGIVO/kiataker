@@ -77,6 +77,69 @@ services:
       # DEV_TOOLS and TRUST_PROXY are deliberately unset: production defaults are correct.
       # Optional: add SENTRY_DSN in the dashboard to forward errors to Sentry.
 
+  # TEMPORARY public demo API for the website's WhatsApp simulator, until the real number is
+  # live on the Meta Cloud API. A separate service on its OWN empty database, with DEV_TOOLS on
+  # (the simulator lets a caller act as any phone number) and every adapter fake, so nothing a
+  # visitor types touches real data or reaches a real phone or inbox. Never point it at the
+  # production database. Delete this service and its database when WhatsApp goes live, and unset
+  # DEMO_API_BASE_URL on Vercel. Setup: DEPLOYMENT.md, "Temporary website demo".
+  - type: web
+    name: kiataker-api-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    numInstances: 1
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    buildCommand: >-
+      corepack enable &&
+      NODE_ENV=development pnpm install --frozen-lockfile &&
+      pnpm turbo run build --filter=@kiataker/api &&
+      pnpm --filter @kiataker/db migrate:deploy
+    startCommand: pnpm --filter @kiataker/api start
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: TZ
+        value: Africa/Lagos
+      - key: PORT
+        value: "4000"
+      - key: API_PORT
+        value: "4000"
+
+      - key: DATABASE_URL # a SEPARATE demo database (e.g. its own Neon database), never production's
+        sync: false
+      - key: JWT_ACCESS_SECRET # demo-only secrets; Render generates them
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: API_BASE_URL # this service's public URL, e.g. https://kiataker-api-demo.onrender.com
+        sync: false
+      - key: WEB_BASE_URL # the Vercel site URL, exactly (the only origin CORS allows)
+        sync: false
+
+      # The point of this service: the simulator endpoint on, everything that leaves the building off.
+      - key: DEV_TOOLS
+        value: "true"
+      - key: WHATSAPP_ADAPTER
+        value: fake
+      - key: PAYMENTS_ADAPTER
+        value: fake
+      - key: EMAIL_ADAPTER
+        value: fake
+      - key: AI_API_KEY # optional: without it the demo uses the rule-based understanding. A key
+        sync: false #     here is spent by anonymous visitors, so use one with a spending cap.
+      - key: AI_MODEL
+        value: gemini-3.5-flash-lite
+
+      - key: RATE_LIMIT_MAX
+        value: "300"
+      - key: RATE_LIMIT_AUTH_MAX
+        value: "20"
+
 # UPGRADING (before real customers rely on it):
 #   1. plan: starter (or higher), so it never sleeps and can have a disk.
 #   2. Add a disk and point uploads at it:

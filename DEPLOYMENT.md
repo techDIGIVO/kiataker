@@ -56,5 +56,28 @@ compiled into the browser bundle, so changing it needs a redeploy.
    ```
    Sign in at `/admin`, add the team, then delete the `BOOTSTRAP_ADMIN_*` values.
 
+**Temporary website demo** (until the real number is live on WhatsApp)
+
+The production API answers 404 on the simulator endpoint, so the site's phone shows "The live
+demo isn't available here". To make it work without turning on `DEV_TOOLS` in production, run
+the separate demo API defined in `render.yaml` (`kiataker-api-demo`):
+
+1. Create a new, empty database for it (e.g. a second database in Neon). Never reuse production's.
+2. Render: Blueprints → the Kiataker blueprint → sync, so it picks up `kiataker-api-demo`, then
+   fill in its `DATABASE_URL`, `API_BASE_URL` and `WEB_BASE_URL`. Migrations run in the build.
+3. Seed its reference data once, with the demo's own `JWT_ACCESS_SECRET` (copy it from the
+   service's Environment tab):
+   ```
+   DATABASE_URL=<demo database> JWT_ACCESS_SECRET=<demo service's value> \
+   BOOTSTRAP_ADMIN_EMAIL=<email> BOOTSTRAP_ADMIN_PASSWORD=<12+ chars> \
+   pnpm --filter @kiataker/db seed:prod
+   ```
+4. Vercel: set `DEMO_API_BASE_URL` to the demo service's URL and redeploy (it is compiled into
+   the browser bundle). Leave `API_BASE_URL` on the production API.
+
+Links the demo chat sends (confirmations, secure tasks) open pages that read the production API,
+so they show "not found"; the chat itself works. When WhatsApp goes live, unset
+`DEMO_API_BASE_URL`, redeploy Vercel, and delete the demo service and its database.
+
 **Then** go live on WhatsApp ([GO-LIVE-WHATSAPP.md](GO-LIVE-WHATSAPP.md)) and Paystack (keys in
 `/admin/ai`, webhook `{API_BASE_URL}/v1/payments/webhook`).

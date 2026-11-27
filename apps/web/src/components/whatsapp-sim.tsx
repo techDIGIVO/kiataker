@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "./brand";
 
-const API_BASE = process.env.API_BASE_URL ?? "http://localhost:4000";
+// The demo API when one is set (DEMO_API_BASE_URL, see next.config.mjs), else the main API.
+const API_BASE = process.env.DEMO_API_BASE_URL ?? process.env.API_BASE_URL ?? "http://localhost:4000";
 const WHATSAPP_LINK = "https://wa.me/2349065009370?text=" + encodeURIComponent("Hello Kiataker");
 
 interface Btn { id: string; title: string }
