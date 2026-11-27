@@ -9,7 +9,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["API_BASE_URL"],
+      "env": ["API_BASE_URL", "DEMO_API_BASE_URL"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
